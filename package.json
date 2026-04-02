@@ -1,0 +1,21 @@
+{
+  "name": "anime-scraper-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "sync:once": "SCRAPER_RUN_ONCE=true bun run src/index.ts",
+    "bench:htmlrewriter": "bun run test/benchmark-htmlrewriter.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.525.0",
+    "@supabase/supabase-js": "2.89.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.12",
+    "typescript": "5.9.3"
+  }
+}
