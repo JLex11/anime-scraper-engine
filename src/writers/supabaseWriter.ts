@@ -1,5 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { AnimeDetail, AnimeFeedType, EpisodeDetail, EpisodeFeedType, EpisodeSourcesRecord } from '../types/models'
+import type {
+	AnimeDetail,
+	AnimeFeedType,
+	AnimeJikanDetail,
+	AnimeJikanRefreshMeta,
+	EpisodeDetail,
+	EpisodeFeedType,
+	EpisodeSourcesRecord,
+} from '../types/models'
 
 export class SupabaseWriter {
 	constructor(private readonly supabase: SupabaseClient) {}
@@ -91,6 +99,55 @@ export class SupabaseWriter {
 		)
 	}
 
+	async upsertAnimeJikanDetail(detail: AnimeJikanDetail) {
+		await this.execute(
+			this.supabase.from('anime_jikan_details').upsert(
+				[
+					{
+						anime_id: detail.animeId,
+						mal_id: detail.malId,
+						mal_url: detail.malUrl,
+						matched_query: detail.matchedQuery,
+						matched_title: detail.matchedTitle,
+						match_score: detail.matchScore,
+						title: detail.title,
+						title_english: detail.titleEnglish ?? null,
+						title_japanese: detail.titleJapanese ?? null,
+						synopsis: detail.synopsis ?? null,
+						background: detail.background ?? null,
+						type: detail.type ?? null,
+						status: detail.status ?? null,
+						rating: detail.rating ?? null,
+						source: detail.source ?? null,
+						season: detail.season ?? null,
+						year: detail.year ?? null,
+						episodes: detail.episodes ?? null,
+						duration: detail.duration ?? null,
+						score: detail.score ?? null,
+						scored_by: detail.scoredBy ?? null,
+						rank: detail.rank ?? null,
+						popularity: detail.popularity ?? null,
+						members: detail.members ?? null,
+						favorites: detail.favorites ?? null,
+						titles: detail.titles,
+						images: detail.images,
+						trailer: detail.trailer,
+						promos: detail.promos,
+						genres: detail.genres,
+						studios: detail.studios,
+						external_links: detail.externalLinks,
+						streaming_links: detail.streamingLinks,
+						relations: detail.relations,
+						jikan_fetched_at: detail.jikanFetchedAt,
+						jikan_expires_at: detail.jikanExpiresAt,
+					},
+				],
+				{ onConflict: 'anime_id' }
+			),
+			'upsert anime_jikan_details'
+		)
+	}
+
 	async upsertEpisodes(episodes: EpisodeDetail[]) {
 		if (episodes.length === 0) return
 
@@ -160,6 +217,26 @@ export class SupabaseWriter {
 
 		const items = (data ?? []) as Array<{ anime_id: string }>
 		return Array.from(new Set(items.map((item) => item.anime_id)))
+	}
+
+	async getAnimeJikanRefreshMeta(animeId: string): Promise<AnimeJikanRefreshMeta | null> {
+		const { data } = await this.execute(
+			this.supabase
+				.from('anime_jikan_details')
+				.select('mal_id,jikan_expires_at')
+				.eq('anime_id', animeId)
+				.limit(1),
+			'select anime_jikan_details refresh meta'
+		)
+
+		const items = (data ?? []) as Array<{ mal_id: number | null; jikan_expires_at: string | null }>
+		const item = items[0]
+		if (!item) return null
+
+		return {
+			malId: item.mal_id ?? null,
+			jikanExpiresAt: item.jikan_expires_at ?? null,
+		}
 	}
 
 	async getRecentEpisodeIds(limit = 200, daysWindow = 7) {

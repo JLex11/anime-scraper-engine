@@ -159,6 +159,162 @@ describe('SupabaseWriter', () => {
 		})
 	})
 
+	test('upsertAnimeJikanDetail persiste enrichment Jikan con columnas snake_case y json', async () => {
+		const { supabase, upsertCalls } = createSupabaseMock()
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.upsertAnimeJikanDetail({
+			animeId: 'naruto',
+			malId: 20,
+			malUrl: 'https://myanimelist.net/anime/20/Naruto',
+			matchedQuery: 'Naruto',
+			matchedTitle: 'Naruto',
+			matchScore: 1,
+			title: 'Naruto',
+			titleEnglish: 'Naruto',
+			titleJapanese: 'ナルト',
+			synopsis: 'Historia ninja',
+			background: null,
+			type: 'TV',
+			status: 'Finished Airing',
+			rating: 'PG-13',
+			source: 'Manga',
+			season: 'fall',
+			year: 2002,
+			episodes: 220,
+			duration: '23 min per ep',
+			score: 7.9,
+			scoredBy: 1000,
+			rank: 500,
+			popularity: 20,
+			members: 300000,
+			favorites: 50000,
+			titles: [{ type: 'Default', title: 'Naruto' }],
+			images: {
+				jpg: {
+					image_url: 'https://cdn.example/naruto.jpg',
+					small_image_url: 'https://cdn.example/naruto-small.jpg',
+					large_image_url: 'https://cdn.example/naruto-large.jpg',
+				},
+			},
+			trailer: {
+				youtube_id: 'abc123',
+				url: 'https://youtube.com/watch?v=abc123',
+				embed_url: 'https://www.youtube-nocookie.com/embed/abc123',
+				images: { image_url: 'https://img.youtube.com/abc123/default.jpg' },
+			},
+			promos: [
+				{
+					title: 'PV 1',
+					trailer: {
+						youtube_id: 'promo123',
+						url: 'https://youtube.com/watch?v=promo123',
+						embed_url: 'https://www.youtube-nocookie.com/embed/promo123',
+						images: { image_url: 'https://img.youtube.com/promo123/default.jpg' },
+					},
+				},
+			],
+			genres: [{ mal_id: 1, type: 'anime', name: 'Action', url: 'https://myanimelist.net/anime/genre/1/Action' }],
+			studios: [{ mal_id: 17, type: 'anime', name: 'Pierrot', url: 'https://myanimelist.net/anime/producer/17/Pierrot' }],
+			externalLinks: [{ name: 'Official Site', url: 'https://naruto-official.com/' }],
+			streamingLinks: [{ name: 'Crunchyroll', url: 'https://crunchyroll.com/naruto' }],
+			relations: [
+				{
+					relation: 'Sequel',
+					entry: [
+						{
+							mal_id: 1735,
+							type: 'anime',
+							name: 'Naruto: Shippuuden',
+							url: 'https://myanimelist.net/anime/1735/Naruto__Shippuuden',
+						},
+					],
+				},
+			],
+			jikanFetchedAt: '2026-04-02T12:00:00.000Z',
+			jikanExpiresAt: '2026-04-09T12:00:00.000Z',
+		})
+
+		expect(upsertCalls).toHaveLength(1)
+		expect(upsertCalls[0]).toEqual({
+			table: 'anime_jikan_details',
+			payload: [
+				{
+					anime_id: 'naruto',
+					mal_id: 20,
+					mal_url: 'https://myanimelist.net/anime/20/Naruto',
+					matched_query: 'Naruto',
+					matched_title: 'Naruto',
+					match_score: 1,
+					title: 'Naruto',
+					title_english: 'Naruto',
+					title_japanese: 'ナルト',
+					synopsis: 'Historia ninja',
+					background: null,
+					type: 'TV',
+					status: 'Finished Airing',
+					rating: 'PG-13',
+					source: 'Manga',
+					season: 'fall',
+					year: 2002,
+					episodes: 220,
+					duration: '23 min per ep',
+					score: 7.9,
+					scored_by: 1000,
+					rank: 500,
+					popularity: 20,
+					members: 300000,
+					favorites: 50000,
+					titles: [{ type: 'Default', title: 'Naruto' }],
+					images: {
+						jpg: {
+							image_url: 'https://cdn.example/naruto.jpg',
+							small_image_url: 'https://cdn.example/naruto-small.jpg',
+							large_image_url: 'https://cdn.example/naruto-large.jpg',
+						},
+					},
+					trailer: {
+						youtube_id: 'abc123',
+						url: 'https://youtube.com/watch?v=abc123',
+						embed_url: 'https://www.youtube-nocookie.com/embed/abc123',
+						images: { image_url: 'https://img.youtube.com/abc123/default.jpg' },
+					},
+					promos: [
+						{
+							title: 'PV 1',
+							trailer: {
+								youtube_id: 'promo123',
+								url: 'https://youtube.com/watch?v=promo123',
+								embed_url: 'https://www.youtube-nocookie.com/embed/promo123',
+								images: { image_url: 'https://img.youtube.com/promo123/default.jpg' },
+							},
+						},
+					],
+					genres: [{ mal_id: 1, type: 'anime', name: 'Action', url: 'https://myanimelist.net/anime/genre/1/Action' }],
+					studios: [{ mal_id: 17, type: 'anime', name: 'Pierrot', url: 'https://myanimelist.net/anime/producer/17/Pierrot' }],
+					external_links: [{ name: 'Official Site', url: 'https://naruto-official.com/' }],
+					streaming_links: [{ name: 'Crunchyroll', url: 'https://crunchyroll.com/naruto' }],
+					relations: [
+						{
+							relation: 'Sequel',
+							entry: [
+								{
+									mal_id: 1735,
+									type: 'anime',
+									name: 'Naruto: Shippuuden',
+									url: 'https://myanimelist.net/anime/1735/Naruto__Shippuuden',
+								},
+							],
+						},
+					],
+					jikan_fetched_at: '2026-04-02T12:00:00.000Z',
+					jikan_expires_at: '2026-04-09T12:00:00.000Z',
+				},
+			],
+			options: { onConflict: 'anime_id' },
+		})
+	})
+
 	test('upsertEpisodes persiste episodios normalizados', async () => {
 		const { supabase, upsertCalls } = createSupabaseMock()
 		const writer = new SupabaseWriter(supabase)
@@ -269,6 +425,27 @@ describe('SupabaseWriter', () => {
 		})
 		expect(payload[0].last_error_at).toEqual(expect.any(String))
 		expect(payload[0].last_success_at).toBeNull()
+	})
+
+	test('getAnimeJikanRefreshMeta retorna malId y expiracion para el anime', async () => {
+		const { supabase, selectCalls } = createSupabaseMock(undefined, {
+			anime_jikan_details: [{ mal_id: 20, jikan_expires_at: '2026-04-09T12:00:00.000Z' }],
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		const result = await writer.getAnimeJikanRefreshMeta('naruto')
+
+		expect(result).toEqual({
+			malId: 20,
+			jikanExpiresAt: '2026-04-09T12:00:00.000Z',
+		})
+		expect(selectCalls).toContainEqual({
+			table: 'anime_jikan_details',
+			columns: 'mal_id,jikan_expires_at',
+			filters: [{ type: 'eq', column: 'anime_id', value: 'naruto' }],
+			orders: [],
+			limit: 1,
+		})
 	})
 
 	test('upsertAnimeDetails persiste animes y relacionados en tablas separadas', async () => {

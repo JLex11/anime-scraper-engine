@@ -2,11 +2,20 @@ import type { AnimeDetail } from '../types/models'
 
 const clean = (value: string) => value.replace(/\s+/g, ' ').trim()
 const getAnimeIdFromHref = (href: string) => href.match(/\/anime\/([^/?#]+)/)?.[1] ?? null
+const TYPE_MAP: Record<string, string> = {
+	tv: 'TV',
+	movie: 'Movie',
+	ova: 'OVA',
+	ona: 'ONA',
+	special: 'Special',
+}
 
 export const extractAnimeDetail = async (animeId: string, html: string): Promise<AnimeDetail | null> => {
 	let title = ''
 	let description = ''
 	let coverImage: string | null = null
+	let animeType: string | null = null
+	let status = ''
 	const genres: string[] = []
 	const relatedAnimeIds: string[] = []
 
@@ -27,6 +36,24 @@ export const extractAnimeDetail = async (animeId: string, html: string): Promise
 				if (src) {
 					coverImage = src.startsWith('//') ? `https:${src}` : src
 				}
+			},
+		})
+		.on('.Ficha .Type', {
+			element(element) {
+				if (animeType) return
+				const className = element.getAttribute('class') ?? ''
+				for (const token of className.split(/\s+/)) {
+					const mapped = TYPE_MAP[token.toLowerCase()]
+					if (mapped) {
+						animeType = mapped
+						break
+					}
+				}
+			},
+		})
+		.on('.AnmStts', {
+			text(textChunk) {
+				status += textChunk.text
 			},
 		})
 		.on('.Nvgnrs a', {
@@ -56,6 +83,8 @@ export const extractAnimeDetail = async (animeId: string, html: string): Promise
 		title: normalizedTitle,
 		description: clean(description) || null,
 		originalLink: `https://www3.animeflv.net/anime/${animeId}`,
+		status: clean(status) || null,
+		type: animeType,
 		genres: genres.length > 0 ? genres : null,
 		images: {
 			coverImage,

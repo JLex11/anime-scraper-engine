@@ -1,4 +1,5 @@
 import { fetchAnimeFlvHtml } from './clients/animeflvClient'
+import { JikanClient } from './clients/jikanClient'
 import { createSupabaseClient } from './clients/supabaseClient'
 import { createConfig, type RuntimeEnv } from './config'
 import type { PipelineContext } from './pipelines/context'
@@ -24,12 +25,14 @@ export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const writer = new SupabaseWriter(supabase)
 	const r2Binding = asR2Binding(env[config.r2BucketBinding])
 	const r2Writer = new R2Writer(config, r2Binding as any)
+	const jikanClient = new JikanClient(config)
 
 	return {
 		config,
 		logger,
 		writer,
 		r2Writer,
+		jikanClient,
 		fetchHtml: (path: string) => fetchAnimeFlvHtml(config, path),
 	}
 }

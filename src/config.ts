@@ -4,6 +4,7 @@ export type AppConfig = {
 	supabaseUrl: string
 	supabaseServiceRoleKey: string
 	animeFlvBaseUrl: string
+	jikanBaseUrl: string
 	requestTimeoutMs: number
 	requestRetryAttempts: number
 	maxConcurrency: number
@@ -33,6 +34,7 @@ export const createConfig = (env: RuntimeEnv): AppConfig => {
 		supabaseUrl: readEnv(env, 'SUPABASE_URL'),
 		supabaseServiceRoleKey: readEnv(env, 'SUPABASE_SERVICE_ROLE_KEY'),
 		animeFlvBaseUrl: asString(env.ANIMEFLV_BASE_URL) || 'https://www3.animeflv.net',
+		jikanBaseUrl: asString(env.JIKAN_BASE_URL) || 'https://api.jikan.moe/v4',
 		requestTimeoutMs: Number(asString(env.SCRAPER_REQUEST_TIMEOUT_MS) || '15000'),
 		requestRetryAttempts: Number(asString(env.SCRAPER_REQUEST_RETRY_ATTEMPTS) || '1'),
 		maxConcurrency: Number(asString(env.SCRAPER_MAX_CONCURRENCY) || '6'),

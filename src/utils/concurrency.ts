@@ -20,3 +20,35 @@ export const runWithConcurrency = async <T, R>(
 	await Promise.all(workers)
 	return results
 }
+
+export const createConcurrencyLimiter = (concurrency: number) => {
+	const safeConcurrency = Math.max(1, concurrency)
+	let activeCount = 0
+	const queue: Array<() => void> = []
+
+	const runNext = () => {
+		if (activeCount >= safeConcurrency) return
+		const next = queue.shift()
+		if (!next) return
+		activeCount += 1
+		next()
+	}
+
+	return async <T>(task: () => Promise<T>): Promise<T> => {
+		return new Promise<T>((resolve, reject) => {
+			const runTask = async () => {
+				try {
+					resolve(await task())
+				} catch (error) {
+					reject(error)
+				} finally {
+					activeCount -= 1
+					runNext()
+				}
+			}
+
+			queue.push(runTask)
+			runNext()
+		})
+	}
+}

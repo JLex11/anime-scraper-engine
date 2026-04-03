@@ -37,6 +37,14 @@ Trigger manual del Worker:
 
 Si configuras `R2_*` + `R2_PUBLIC_BASE_URL`, el pipeline de detalles intentara espejar `coverImage` hacia R2 antes de persistir en `animes.images`.
 
+## Enriquecimiento Jikan
+
+`syncAnimeDetails` mantiene AnimeFLV como fuente base y complementa metadata desde Jikan/MyAnimeList en `anime_jikan_details`.
+
+- Usa `JIKAN_BASE_URL` si quieres apuntar a otra instancia; por defecto usa `https://api.jikan.moe/v4`.
+- Solo refresca enrichment vencido o inexistente; el TTL actual es de 7 dias.
+- La migracion SQL incluida crea la tabla `anime_jikan_details` para poster MAL, synopsis, trailer, promos y metadata adicional.
+
 ## Deploy en Cloudflare Workers (Cron)
 
 Este repo ya incluye:

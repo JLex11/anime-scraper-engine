@@ -1,11 +1,12 @@
 import type { AppConfig } from '../src/config'
 import type { PipelineContext } from '../src/pipelines/context'
-import type { AnimeDetail, EpisodeDetail, EpisodeSourcesRecord } from '../src/types/models'
+import type { AnimeDetail, AnimeJikanDetail, AnimeJikanRefreshMeta, EpisodeDetail, EpisodeSourcesRecord } from '../src/types/models'
 
 export type WriterSpy = {
 	animeFeedItems: Array<{ feedType: string; animeIds: string[]; page: number }>
 	episodeFeedItems: Array<{ feedType: string; episodeIds: string[] }>
 	animeDetails: AnimeDetail[]
+	animeJikanDetails: AnimeJikanDetail[]
 	episodes: EpisodeDetail[][]
 	episodeSources: EpisodeSourcesRecord[]
 	syncStates: Array<{ resourceType: string; resourceId: string; status: 'success' | 'error'; errorMessage?: string }>
@@ -21,6 +22,7 @@ export const createConfig = (overrides?: Partial<AppConfig>): AppConfig => ({
 	supabaseUrl: '',
 	supabaseServiceRoleKey: '',
 	animeFlvBaseUrl: 'https://example.test',
+	jikanBaseUrl: 'https://api.jikan.test/v4',
 	requestTimeoutMs: 1000,
 	requestRetryAttempts: 1,
 	maxConcurrency: 2,
@@ -40,6 +42,7 @@ export const createWriterSpy = (): WriterSpy => {
 	const animeFeedItems: WriterSpy['animeFeedItems'] = []
 	const episodeFeedItems: WriterSpy['episodeFeedItems'] = []
 	const animeDetails: AnimeDetail[] = []
+	const animeJikanDetails: AnimeJikanDetail[] = []
 	const episodes: EpisodeDetail[][] = []
 	const episodeSources: EpisodeSourcesRecord[] = []
 	const syncStates: WriterSpy['syncStates'] = []
@@ -48,6 +51,7 @@ export const createWriterSpy = (): WriterSpy => {
 		animeFeedItems,
 		episodeFeedItems,
 		animeDetails,
+		animeJikanDetails,
 		episodes,
 		episodeSources,
 		syncStates,
@@ -60,6 +64,9 @@ export const createWriterSpy = (): WriterSpy => {
 			},
 			upsertAnimeDetails: async (detail: AnimeDetail) => {
 				animeDetails.push(detail)
+			},
+			upsertAnimeJikanDetail: async (detail: AnimeJikanDetail) => {
+				animeJikanDetails.push(detail)
 			},
 			upsertEpisodes: async (records: EpisodeDetail[]) => {
 				episodes.push(records)
@@ -76,6 +83,7 @@ export const createWriterSpy = (): WriterSpy => {
 				syncStates.push({ resourceType, resourceId, status, errorMessage })
 			},
 			getAnimeIdsFromFeed: async () => [],
+			getAnimeJikanRefreshMeta: async (): Promise<AnimeJikanRefreshMeta | null> => null,
 			getRecentEpisodeIds: async () => [],
 			getMaxEpisodeNumberByAnimeId: async () => 0,
 			getEpisodeIdsNeedingSourceRefresh: async () => [],
@@ -102,6 +110,7 @@ export const createPipelineContext = (options: {
 	writer?: PipelineContext['writer']
 	logger?: PipelineContext['logger']
 	r2Writer?: PipelineContext['r2Writer']
+	jikanClient?: PipelineContext['jikanClient']
 	config?: Partial<AppConfig>
 } = {}): PipelineContext => {
 	const fetchHtml =
@@ -115,6 +124,13 @@ export const createPipelineContext = (options: {
 		writer: options.writer ?? createWriterSpy().writer,
 		logger: options.logger ?? createLoggerSpy().logger,
 		r2Writer: options.r2Writer,
+		jikanClient:
+			options.jikanClient ??
+			({
+				searchAnime: async () => [],
+				getAnimeFull: async () => null,
+				getAnimeVideos: async () => null,
+			} as unknown as PipelineContext['jikanClient']),
 		fetchHtml,
 	}
 }

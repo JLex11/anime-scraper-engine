@@ -1,6 +1,12 @@
 import type { AppConfig } from '../../src/config'
 import type { PipelineContext } from '../../src/pipelines/context'
-import type { AnimeDetail, EpisodeDetail, EpisodeSourcesRecord } from '../../src/types/models'
+import type {
+	AnimeDetail,
+	AnimeJikanDetail,
+	AnimeJikanRefreshMeta,
+	EpisodeDetail,
+	EpisodeSourcesRecord,
+} from '../../src/types/models'
 
 export type SyncStateCall = {
 	resourceType: string
@@ -29,6 +35,7 @@ export const createTestConfig = (): AppConfig => ({
 	supabaseUrl: '',
 	supabaseServiceRoleKey: '',
 	animeFlvBaseUrl: 'https://example.test',
+	jikanBaseUrl: 'https://api.jikan.test/v4',
 	requestTimeoutMs: 1000,
 	requestRetryAttempts: 1,
 	maxConcurrency: 2,
@@ -47,11 +54,13 @@ export const createPipelineContextMock = (overrides?: {
 	config?: Partial<AppConfig>
 	fetchHtml?: PipelineContext['fetchHtml']
 	r2Writer?: PipelineContext['r2Writer']
+	jikanClient?: PipelineContext['jikanClient']
 }) => {
 	const calls = {
 		animeFeedItems: [] as AnimeFeedCall[],
 		episodeFeedItems: [] as EpisodeFeedCall[],
 		animeDetails: [] as AnimeDetail[],
+		animeJikanDetails: [] as AnimeJikanDetail[],
 		episodes: [] as EpisodeDetail[][],
 		episodeSources: [] as EpisodeSourcesRecord[],
 		syncStates: [] as SyncStateCall[],
@@ -68,6 +77,9 @@ export const createPipelineContextMock = (overrides?: {
 		upsertAnimeDetails: async (detail: AnimeDetail) => {
 			calls.animeDetails.push(detail)
 		},
+		upsertAnimeJikanDetail: async (detail: AnimeJikanDetail) => {
+			calls.animeJikanDetails.push(detail)
+		},
 		upsertEpisodes: async (episodes: EpisodeDetail[]) => {
 			calls.episodes.push(episodes)
 		},
@@ -83,6 +95,7 @@ export const createPipelineContextMock = (overrides?: {
 			calls.syncStates.push({ resourceType, resourceId, status, errorMessage })
 		},
 		getAnimeIdsFromFeed: async () => [],
+		getAnimeJikanRefreshMeta: async (): Promise<AnimeJikanRefreshMeta | null> => null,
 		getRecentEpisodeIds: async () => [],
 		getMaxEpisodeNumberByAnimeId: async () => 0,
 		getEpisodeIdsNeedingSourceRefresh: async () => [],
@@ -102,6 +115,13 @@ export const createPipelineContextMock = (overrides?: {
 		writer: writer as unknown as PipelineContext['writer'],
 		logger: logger as unknown as PipelineContext['logger'],
 		r2Writer: overrides?.r2Writer,
+		jikanClient:
+			overrides?.jikanClient ??
+			({
+				searchAnime: async () => [],
+				getAnimeFull: async () => null,
+				getAnimeVideos: async () => null,
+			} as unknown as PipelineContext['jikanClient']),
 		fetchHtml: overrides?.fetchHtml ?? (async () => null),
 	}
 
