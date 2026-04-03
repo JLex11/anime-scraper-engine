@@ -1,5 +1,6 @@
 import { extractEpisodeIds } from '../extractors/extractIds'
 import type { EpisodeDetail } from '../types/models'
+import { buildAnimeSeed } from '../utils/animeSeed'
 import type { PipelineContext } from './context'
 
 const parseEpisodeNumber = (episodeId: string) => {
@@ -37,6 +38,7 @@ export const syncLatestEpisodes = async (ctx: PipelineContext) => {
 		}
 	})
 
+	await ctx.writer.ensureAnimeRecords(episodes.map((episode) => buildAnimeSeed(episode.animeId, episode.title ?? episode.animeId)))
 	await ctx.writer.upsertEpisodes(episodes)
 	await ctx.writer.upsertEpisodeFeedItems('latest', topEpisodeIds)
 	await ctx.writer.markSyncState('feed', 'latest_episodes', 'success')

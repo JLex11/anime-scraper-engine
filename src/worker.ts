@@ -1,9 +1,24 @@
-import { runCron, runOnce } from './scheduler'
+import { runCron, runOnce, runTaskByName, type TaskName } from './scheduler'
 import { createPipelineContext } from './runtime'
 
 type WorkerEnv = Record<string, unknown>
 
 const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+const asTaskName = (value: string): TaskName | null => {
+	switch (value) {
+		case 'sync-latest-animes':
+		case 'sync-latest-episodes':
+		case 'sync-broadcast':
+		case 'sync-top-rated':
+		case 'sync-directory':
+		case 'sync-details-and-episodes':
+		case 'sync-episode-sources':
+			return value
+		default:
+			return null
+	}
+}
 
 const isAuthorizedManualRun = (request: Request, env: WorkerEnv) => {
 	const configuredToken = asString(env.SCRAPER_MANUAL_RUN_TOKEN)
@@ -42,6 +57,12 @@ export default {
 			}
 
 			const ctx = createPipelineContext(env)
+			const taskName = asTaskName(url.searchParams.get('task') ?? '')
+			if (taskName) {
+				await runTaskByName(ctx, taskName)
+				return json({ ok: true, mode: 'run-task', task: taskName })
+			}
+
 			await runOnce(ctx)
 			return json({ ok: true, mode: 'run-once' })
 		}

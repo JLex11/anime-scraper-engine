@@ -1,7 +1,7 @@
 import type { JikanAnimeFull, JikanAnimeVideos } from '../clients/jikanClient'
 import { extractAnimeDetail } from '../extractors/extractAnimeDetail'
 import { createConcurrencyLimiter, runWithConcurrency } from '../utils/concurrency'
-import { matchJikanAnime } from '../utils/jikanMatcher'
+import { createJikanSearchQueries, matchJikanAnime } from '../utils/jikanMatcher'
 import type { AnimeDetail, AnimeJikanDetail } from '../types/models'
 import type { PipelineContext } from './context'
 
@@ -61,6 +61,9 @@ const mapJikanDetail = (
 	jikanExpiresAt: new Date(now.getTime() + JIKAN_TTL_MS).toISOString(),
 })
 
+const getLookupTitles = (detail: AnimeDetail) =>
+	Array.from(new Set([detail.title, ...(detail.otherTitles ?? [])].map((value) => value.trim()).filter(Boolean)))
+
 const syncJikanEnrichment = async (ctx: PipelineContext, detail: AnimeDetail) => {
 	try {
 		const now = new Date()
@@ -81,13 +84,33 @@ const syncJikanEnrichment = async (ctx: PipelineContext, detail: AnimeDetail) =>
 			videos = await ctx.jikanClient.getAnimeVideos(refreshMeta.malId)
 			matchedTitle = full?.title ?? detail.title
 		} else {
-			const searchResults = await ctx.jikanClient.searchAnime(detail.title, 10)
-			const match = matchJikanAnime(detail.title, detail.type, searchResults)
+			let match = null
+			let searchResults = [] as Awaited<ReturnType<typeof ctx.jikanClient.searchAnime>>
+			const lookupTitles = getLookupTitles(detail)
+			const attemptedSearches: Array<{ lookupTitle: string; query: string; resultCount: number }> = []
+
+			for (const lookupTitle of lookupTitles) {
+				for (const query of createJikanSearchQueries(lookupTitle)) {
+					searchResults = await ctx.jikanClient.searchAnime(query, 10)
+					attemptedSearches.push({
+						lookupTitle,
+						query,
+						resultCount: searchResults.length,
+					})
+					match = matchJikanAnime(lookupTitle, detail.type, searchResults)
+					if (match) break
+				}
+				if (match) break
+			}
+
 			if (!match) {
 				ctx.logger.warn('syncAnimeDetails: no confident Jikan match', {
 					animeId: detail.animeId,
 					title: detail.title,
+					otherTitles: detail.otherTitles ?? [],
 					type: detail.type ?? null,
+					resultCount: searchResults.length,
+					attemptedSearches,
 				})
 				await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'error', 'No confident Jikan match')
 				return

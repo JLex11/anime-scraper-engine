@@ -4,6 +4,7 @@ import type {
 	AnimeFeedType,
 	AnimeJikanDetail,
 	AnimeJikanRefreshMeta,
+	AnimeSeedRecord,
 	EpisodeDetail,
 	EpisodeFeedType,
 	EpisodeSourcesRecord,
@@ -12,10 +13,32 @@ import type {
 export class SupabaseWriter {
 	constructor(private readonly supabase: SupabaseClient) {}
 
+	private formatError(error: unknown) {
+		if (error instanceof Error) return error.message
+		if (typeof error === 'string') return error
+
+		if (error && typeof error === 'object') {
+			const normalized = error as Record<string, unknown>
+			const parts = [normalized.message, normalized.code, normalized.details, normalized.hint]
+				.filter((value) => typeof value === 'string' && value.trim().length > 0)
+				.map((value) => String(value))
+
+			if (parts.length > 0) return parts.join(' | ')
+
+			try {
+				return JSON.stringify(normalized)
+			} catch {
+				return String(error)
+			}
+		}
+
+		return String(error)
+	}
+
 	private async execute<T extends { error: unknown }>(operation: PromiseLike<T>, context: string): Promise<T> {
 		const result = await operation
 		if (result.error) {
-			throw new Error(`${context}: ${String(result.error)}`)
+			throw new Error(`${context}: ${this.formatError(result.error)}`)
 		}
 		return result
 	}
@@ -37,6 +60,42 @@ export class SupabaseWriter {
 				.from('anime_feed_items')
 				.upsert(payload, { onConflict: 'feed_type,page,position' }),
 			'upsert anime_feed_items'
+		)
+	}
+
+	async ensureAnimeRecords(records: AnimeSeedRecord[]) {
+		if (records.length === 0) return
+
+		const dedupedByAnimeId = new Map<string, { animeId: string; title: string; type: string; originalLink: string | null }>()
+		for (const record of records) {
+			if (!record.animeId || !record.title || dedupedByAnimeId.has(record.animeId)) continue
+
+			dedupedByAnimeId.set(record.animeId, {
+				animeId: record.animeId,
+				title: record.title,
+				type: record.type ?? 'Anime',
+				originalLink: record.originalLink ?? null,
+			})
+		}
+
+		const deduped = Array.from(dedupedByAnimeId.values())
+
+		if (deduped.length === 0) return
+
+		const animeIds = deduped.map((record) => record.animeId)
+		const { data } = await this.execute(
+			this.supabase.from('animes').select('animeId').in('animeId', animeIds),
+			'select existing anime seed records'
+		)
+
+		const existingAnimeIds = new Set(((data ?? []) as Array<{ animeId: string }>).map((row) => row.animeId))
+		const missingRecords = deduped.filter((record) => !existingAnimeIds.has(record.animeId))
+
+		if (missingRecords.length === 0) return
+
+		await this.execute(
+			this.supabase.from('animes').insert(missingRecords),
+			'insert anime seed records'
 		)
 	}
 
@@ -66,6 +125,7 @@ export class SupabaseWriter {
 					{
 						animeId: anime.animeId,
 						title: anime.title,
+						otherTitles: anime.otherTitles ?? null,
 						cover_image_key: anime.coverImageKey ?? null,
 						carousel_image_keys: anime.carouselImageKeys ?? [],
 						description: anime.description ?? null,

@@ -13,9 +13,12 @@ type JikanClientConfig = {
 	jikanBaseUrl: string
 	requestTimeoutMs: number
 	requestRetryAttempts: number
+	onLog?: (level: 'info' | 'warn', message: string, meta?: unknown) => void
 }
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+
+const defaultFetch: FetchLike = (input, init) => globalThis.fetch(input as any, init)
 
 type JikanEnvelope<T> = {
 	data?: T
@@ -97,7 +100,7 @@ const createUrl = (baseUrl: string, path: string, params?: Record<string, string
 export class JikanClient {
 	constructor(
 		private readonly config: JikanClientConfig,
-		private readonly fetchImpl: FetchLike = fetch
+		private readonly fetchImpl: FetchLike = defaultFetch
 	) {}
 
 	private async request<T>(path: string, params?: Record<string, string | number>): Promise<T | null> {
@@ -116,10 +119,32 @@ export class JikanClient {
 					return payload.data ?? null
 				}
 
+				let bodyPreview = ''
+				try {
+					bodyPreview = (await response.text()).slice(0, 300)
+				} catch {
+					bodyPreview = ''
+				}
+
+				this.config.onLog?.('warn', 'jikan.request.non_ok', {
+					path,
+					url,
+					status: response.status,
+					attempt,
+					bodyPreview,
+				})
+
 				if (!isTransientStatus(response.status)) {
 					return null
 				}
 			} catch (error) {
+				this.config.onLog?.('warn', 'jikan.request.error', {
+					path,
+					url,
+					attempt,
+					error: error instanceof Error ? error.message : String(error),
+				})
+
 				if (!isTransientError(error)) {
 					return null
 				}
@@ -135,7 +160,14 @@ export class JikanClient {
 
 	async searchAnime(query: string, limit = 10): Promise<JikanAnimeSearchResult[]> {
 		const data = await this.request<JikanAnimeSearchResult[]>('anime', { q: query, limit })
-		return data ?? []
+		const results = data ?? []
+		if (results.length === 0) {
+			this.config.onLog?.('info', 'jikan.search.empty', {
+				query,
+				limit,
+			})
+		}
+		return results
 	}
 
 	async getAnimeFull(malId: number): Promise<JikanAnimeFull | null> {

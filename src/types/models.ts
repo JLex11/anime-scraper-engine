@@ -9,6 +9,13 @@ export interface AnimeFeedItem {
 	feedFetchedAt: string
 }
 
+export interface AnimeSeedRecord {
+	animeId: string
+	title: string
+	type?: string | null
+	originalLink?: string | null
+}
+
 export interface EpisodeFeedItem {
 	feedType: EpisodeFeedType
 	episodeId: string
@@ -19,6 +26,7 @@ export interface EpisodeFeedItem {
 export interface AnimeDetail {
 	animeId: string
 	title: string
+	otherTitles?: string[] | null
 	description?: string | null
 	originalLink?: string | null
 	status?: string | null

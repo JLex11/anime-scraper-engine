@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { JikanAnimeSearchResult } from '../src/clients/jikanClient'
-import { matchJikanAnime, normalizeAnimeType, normalizeTitle } from '../src/utils/jikanMatcher'
+import { createJikanSearchQueries, matchJikanAnime, normalizeAnimeType, normalizeTitle } from '../src/utils/jikanMatcher'
 
 const createResult = (overrides?: Partial<JikanAnimeSearchResult>): JikanAnimeSearchResult => ({
 	mal_id: 1,
@@ -24,6 +24,12 @@ describe('jikanMatcher', () => {
 		expect(normalizeTitle('  Boku no Héro!!  ')).toBe('boku no hero')
 		expect(normalizeAnimeType('Anime')).toBe('TV')
 		expect(normalizeAnimeType('película')).toBe('Movie')
+		expect(normalizeTitle('Kekkon Yubiwa Monogatari II')).toBe('kekkon yubiwa monogatari 2')
+	})
+
+	test('genera queries variantes para temporadas y numeros romanos', () => {
+		expect(createJikanSearchQueries('Kekkon Yubiwa Monogatari II')).toContain('kekkon yubiwa monogatari 2')
+		expect(createJikanSearchQueries('Fumetsu no Anata e Season 3')).toContain('Fumetsu no Anata e')
 	})
 
 	test('acepta match exacto por titulo principal', () => {

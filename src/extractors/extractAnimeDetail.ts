@@ -17,6 +17,7 @@ export const extractAnimeDetail = async (animeId: string, html: string): Promise
 	let animeType: string | null = null
 	let status = ''
 	const genres: string[] = []
+	const otherTitles: string[] = []
 	const relatedAnimeIds: string[] = []
 
 	const rewriter = new HTMLRewriter()
@@ -28,6 +29,12 @@ export const extractAnimeDetail = async (animeId: string, html: string): Promise
 		.on('.Ficha .Description p, .Description p', {
 			text(textChunk) {
 				description += textChunk.text
+			},
+		})
+		.on('.Ficha .TxtAlt', {
+			text(textChunk) {
+				const value = clean(textChunk.text)
+				if (value) otherTitles.push(value)
 			},
 		})
 		.on('.AnimeCover img, .Image img', {
@@ -81,6 +88,7 @@ export const extractAnimeDetail = async (animeId: string, html: string): Promise
 	return {
 		animeId,
 		title: normalizedTitle,
+		otherTitles: Array.from(new Set(otherTitles.filter((value) => value && value !== normalizedTitle))),
 		description: clean(description) || null,
 		originalLink: `https://www3.animeflv.net/anime/${animeId}`,
 		status: clean(status) || null,

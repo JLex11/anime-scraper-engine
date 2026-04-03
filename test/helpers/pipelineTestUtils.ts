@@ -4,6 +4,7 @@ import type {
 	AnimeDetail,
 	AnimeJikanDetail,
 	AnimeJikanRefreshMeta,
+	AnimeSeedRecord,
 	EpisodeDetail,
 	EpisodeSourcesRecord,
 } from '../../src/types/models'
@@ -61,6 +62,7 @@ export const createPipelineContextMock = (overrides?: {
 		episodeFeedItems: [] as EpisodeFeedCall[],
 		animeDetails: [] as AnimeDetail[],
 		animeJikanDetails: [] as AnimeJikanDetail[],
+		animeSeedRecords: [] as AnimeSeedRecord[][],
 		episodes: [] as EpisodeDetail[][],
 		episodeSources: [] as EpisodeSourcesRecord[],
 		syncStates: [] as SyncStateCall[],
@@ -79,6 +81,9 @@ export const createPipelineContextMock = (overrides?: {
 		},
 		upsertAnimeJikanDetail: async (detail: AnimeJikanDetail) => {
 			calls.animeJikanDetails.push(detail)
+		},
+		ensureAnimeRecords: async (records: AnimeSeedRecord[]) => {
+			calls.animeSeedRecords.push(records)
 		},
 		upsertEpisodes: async (episodes: EpisodeDetail[]) => {
 			calls.episodes.push(episodes)

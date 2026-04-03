@@ -1,6 +1,10 @@
 import { extractAnimeIds } from '../extractors/extractIds'
+import { buildAnimeSeed } from '../utils/animeSeed'
 import { syncAnimeDetails } from './syncAnimeDetails'
 import type { PipelineContext } from './context'
+
+const FEED_LIMIT = 40
+const DETAIL_WARM_LIMIT = 3
 
 export const syncTopRated = async (ctx: PipelineContext) => {
 	const html = await ctx.fetchHtml('/browse?status=1&order=rating')
@@ -11,7 +15,9 @@ export const syncTopRated = async (ctx: PipelineContext) => {
 	}
 
 	const animeIds = await extractAnimeIds(html, 'ul.ListAnimes li a')
-	await ctx.writer.upsertAnimeFeedItems('rating', animeIds.slice(0, 40), 1)
+	const topRatedIds = animeIds.slice(0, FEED_LIMIT)
+	await ctx.writer.ensureAnimeRecords(topRatedIds.map((animeId) => buildAnimeSeed(animeId)))
+	await ctx.writer.upsertAnimeFeedItems('rating', topRatedIds, 1)
 	await ctx.writer.markSyncState('feed', 'rating_animes', 'success')
-	await syncAnimeDetails(ctx, animeIds.slice(0, 40))
+	await syncAnimeDetails(ctx, topRatedIds.slice(0, DETAIL_WARM_LIMIT))
 }

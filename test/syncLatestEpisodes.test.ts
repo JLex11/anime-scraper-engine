@@ -13,6 +13,22 @@ describe('syncLatestEpisodes', () => {
 
 		await syncLatestEpisodes(ctx)
 
+		expect(calls.animeSeedRecords).toHaveLength(1)
+		expect(calls.animeSeedRecords[0]?.slice(0, 2)).toEqual([
+			{
+				animeId: 'mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',
+				title: 'mamonogurai no boukensha ore dake mamono wo kuratte tsuyoku naru',
+				type: 'Anime',
+				originalLink:
+					'https://www3.animeflv.net/anime/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',
+			},
+			{
+				animeId: 'reincarnation-no-kaben',
+				title: 'reincarnation no kaben',
+				type: 'Anime',
+				originalLink: 'https://www3.animeflv.net/anime/reincarnation-no-kaben',
+			},
+		])
 		expect(calls.episodes).toHaveLength(1)
 		expect(calls.episodes[0].slice(0, 2)).toEqual([
 			{

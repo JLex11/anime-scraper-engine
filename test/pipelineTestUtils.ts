@@ -1,12 +1,20 @@
 import type { AppConfig } from '../src/config'
 import type { PipelineContext } from '../src/pipelines/context'
-import type { AnimeDetail, AnimeJikanDetail, AnimeJikanRefreshMeta, EpisodeDetail, EpisodeSourcesRecord } from '../src/types/models'
+import type {
+	AnimeDetail,
+	AnimeJikanDetail,
+	AnimeJikanRefreshMeta,
+	AnimeSeedRecord,
+	EpisodeDetail,
+	EpisodeSourcesRecord,
+} from '../src/types/models'
 
 export type WriterSpy = {
 	animeFeedItems: Array<{ feedType: string; animeIds: string[]; page: number }>
 	episodeFeedItems: Array<{ feedType: string; episodeIds: string[] }>
 	animeDetails: AnimeDetail[]
 	animeJikanDetails: AnimeJikanDetail[]
+	animeSeedRecords: AnimeSeedRecord[][]
 	episodes: EpisodeDetail[][]
 	episodeSources: EpisodeSourcesRecord[]
 	syncStates: Array<{ resourceType: string; resourceId: string; status: 'success' | 'error'; errorMessage?: string }>
@@ -43,6 +51,7 @@ export const createWriterSpy = (): WriterSpy => {
 	const episodeFeedItems: WriterSpy['episodeFeedItems'] = []
 	const animeDetails: AnimeDetail[] = []
 	const animeJikanDetails: AnimeJikanDetail[] = []
+	const animeSeedRecords: AnimeSeedRecord[][] = []
 	const episodes: EpisodeDetail[][] = []
 	const episodeSources: EpisodeSourcesRecord[] = []
 	const syncStates: WriterSpy['syncStates'] = []
@@ -52,6 +61,7 @@ export const createWriterSpy = (): WriterSpy => {
 		episodeFeedItems,
 		animeDetails,
 		animeJikanDetails,
+		animeSeedRecords,
 		episodes,
 		episodeSources,
 		syncStates,
@@ -67,6 +77,9 @@ export const createWriterSpy = (): WriterSpy => {
 			},
 			upsertAnimeJikanDetail: async (detail: AnimeJikanDetail) => {
 				animeJikanDetails.push(detail)
+			},
+			ensureAnimeRecords: async (records: AnimeSeedRecord[]) => {
+				animeSeedRecords.push(records)
 			},
 			upsertEpisodes: async (records: EpisodeDetail[]) => {
 				episodes.push(records)

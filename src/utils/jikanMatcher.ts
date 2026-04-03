@@ -19,8 +19,22 @@ const TYPE_MAP: Record<string, string> = {
 	especial: 'Special',
 }
 
-export const normalizeTitle = (value: string) =>
+const ROMAN_NUMERALS: Record<string, string> = {
+	ii: '2',
+	iii: '3',
+	iv: '4',
+	v: '5',
+	vi: '6',
+}
+
+const normalizeSeasonMarkers = (value: string) =>
 	value
+		.replace(/\b(\d+)(st|nd|rd|th)\s+season\b/g, 'season $1')
+		.replace(/\bseason\s+([ivx]+)\b/gi, (_, roman) => `season ${ROMAN_NUMERALS[String(roman).toLowerCase()] ?? roman}`)
+		.replace(/\b([ivx]+)\b/gi, (roman) => ROMAN_NUMERALS[String(roman).toLowerCase()] ?? roman)
+
+export const normalizeTitle = (value: string) =>
+	normalizeSeasonMarkers(value)
 		.normalize('NFD')
 		.replace(/[\u0300-\u036f]/g, '')
 		.toLowerCase()
@@ -61,6 +75,13 @@ const containmentScore = (left: string, right: string) => {
 	return 0
 }
 
+const tokenCoverageScore = (left: string[], right: string[]) => {
+	if (left.length === 0 || right.length === 0) return 0
+	const rightSet = new Set(right)
+	const covered = left.filter((token) => rightSet.has(token)).length
+	return covered / left.length
+}
+
 export const normalizeAnimeType = (value?: string | null) => {
 	if (!value) return null
 	const normalized = normalizeTitle(value)
@@ -80,8 +101,9 @@ const scoreTitleVariant = (query: string, candidate: string) => {
 	if (normalizedQuery === normalizedCandidate) return 1
 
 	const tokenScore = diceCoefficient(tokenize(query), tokenize(candidate))
+	const coverageScore = tokenCoverageScore(tokenize(query), tokenize(candidate))
 	const containsScore = containmentScore(normalizedQuery, normalizedCandidate)
-	return Math.max(tokenScore, containsScore)
+	return Math.max(tokenScore, containsScore, coverageScore)
 }
 
 export const matchJikanAnime = (
@@ -119,7 +141,20 @@ export const matchJikanAnime = (
 	}
 
 	if (!bestMatch) return null
-	if (bestMatch.score >= 0.82) return bestMatch
-	if (bestMatch.score >= 0.72 && bestMatch.typeMatched) return bestMatch
+	if (bestMatch.score >= 0.74) return bestMatch
+	if (bestMatch.score >= 0.64 && bestMatch.typeMatched) return bestMatch
 	return null
+}
+
+export const createJikanSearchQueries = (title: string) => {
+	const normalized = normalizeTitle(title)
+	const variants = [
+		title,
+		normalized,
+		title.replace(/\b(\d+)(st|nd|rd|th)\s+Season\b/gi, 'Season $1'),
+		title.replace(/\bSeason\s+([IVX]+)\b/gi, (_, roman) => `Season ${ROMAN_NUMERALS[roman.toLowerCase()] ?? roman}`),
+		title.replace(/\b(Season\s+\d+|[2-9](nd|rd|th)\s+Season)\b/gi, '').replace(/\s+/g, ' ').trim(),
+	]
+
+	return Array.from(new Set(variants.map((value) => value.trim()).filter((value) => value.length > 0)))
 }

@@ -10,6 +10,8 @@ import type { PipelineContext } from '../pipelines/context'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
+const DAILY_DETAIL_LIMIT = 3
+const EPISODE_SOURCE_REFRESH_LIMIT = 12
 
 export const CRON_EVERY_15 = '*/15 * * * *'
 export const CRON_EVERY_30 = '*/30 * * * *'
@@ -65,7 +67,7 @@ const buildTaskSpecs = (ctx: PipelineContext): TaskSpec[] => [
 		name: 'sync-details-and-episodes',
 		intervalMs: 24 * HOUR,
 		run: async () => {
-			const animeIds = await ctx.writer.getAnimeIdsFromFeed(250)
+			const animeIds = await ctx.writer.getAnimeIdsFromFeed(DAILY_DETAIL_LIMIT)
 			await syncAnimeDetails(ctx, animeIds)
 			await syncAnimeEpisodes(ctx, animeIds)
 		},
@@ -74,7 +76,7 @@ const buildTaskSpecs = (ctx: PipelineContext): TaskSpec[] => [
 		name: 'sync-episode-sources',
 		intervalMs: 30 * MINUTE,
 		run: async () => {
-			const episodeIds = await ctx.writer.getEpisodeIdsNeedingSourceRefresh(300)
+			const episodeIds = await ctx.writer.getEpisodeIdsNeedingSourceRefresh(EPISODE_SOURCE_REFRESH_LIMIT)
 			await syncEpisodeSources(ctx, episodeIds)
 		},
 	},

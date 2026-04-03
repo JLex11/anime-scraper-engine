@@ -6,6 +6,7 @@ type UpsertCall = {
 	table: string
 	payload: unknown
 	options: unknown
+	method?: 'insert'
 }
 
 type SelectCall = {
@@ -35,6 +36,10 @@ const createSupabaseMock = (
 			return {
 				upsert: async (payload: unknown, options: unknown) => {
 					upsertCalls.push({ table, payload, options })
+					return { data: null, error: errorByTable?.[table] ?? null }
+				},
+				insert: async (payload: unknown, options: unknown) => {
+					upsertCalls.push({ table, payload, options, method: 'insert' })
 					return { data: null, error: errorByTable?.[table] ?? null }
 				},
 				select(columns: string) {
@@ -104,6 +109,64 @@ describe('SupabaseWriter', () => {
 		])
 	})
 
+	test('ensureAnimeRecords inserta seeds sin sobrescribir existentes', async () => {
+		const { supabase, upsertCalls, selectCalls } = createSupabaseMock(undefined, {
+			animes: [],
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.ensureAnimeRecords([
+			{
+				animeId: 'naruto',
+				title: 'Naruto',
+				type: 'Anime',
+				originalLink: 'https://www3.animeflv.net/anime/naruto',
+			},
+			{
+				animeId: 'naruto',
+				title: 'Naruto duplicate',
+			},
+		])
+
+		expect(upsertCalls).toEqual([
+			{
+				table: 'animes',
+				payload: [
+					{
+						animeId: 'naruto',
+						title: 'Naruto',
+						type: 'Anime',
+						originalLink: 'https://www3.animeflv.net/anime/naruto',
+					},
+				],
+				options: undefined,
+				method: 'insert',
+			},
+		])
+		expect(selectCalls).toContainEqual({
+			table: 'animes',
+			columns: 'animeId',
+			filters: [{ type: 'in', column: 'animeId', value: ['naruto'] }],
+			orders: [],
+		})
+	})
+
+	test('ensureAnimeRecords no inserta seeds que ya existen', async () => {
+		const { supabase, upsertCalls } = createSupabaseMock(undefined, {
+			animes: [{ animeId: 'naruto' }],
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.ensureAnimeRecords([
+			{
+				animeId: 'naruto',
+				title: 'Naruto',
+			},
+		])
+
+		expect(upsertCalls).toHaveLength(0)
+	})
+
 	test('upsertAnimeDetails persiste anime y relacionados', async () => {
 		const { supabase, upsertCalls } = createSupabaseMock()
 		const writer = new SupabaseWriter(supabase)
@@ -111,6 +174,7 @@ describe('SupabaseWriter', () => {
 		await writer.upsertAnimeDetails({
 			animeId: 'naruto',
 			title: 'Naruto',
+			otherTitles: ['ナルト'],
 			description: 'Historia ninja',
 			originalLink: 'https://www3.animeflv.net/anime/naruto',
 			genres: ['Accion'],
@@ -135,6 +199,7 @@ describe('SupabaseWriter', () => {
 			{
 				animeId: 'naruto',
 				title: 'Naruto',
+				otherTitles: ['ナルト'],
 				cover_image_key: 'animes/naruto.webp',
 				carousel_image_keys: [],
 				description: 'Historia ninja',
@@ -455,6 +520,7 @@ describe('SupabaseWriter', () => {
 		await writer.upsertAnimeDetails({
 			animeId: 'frieren',
 			title: 'Sousou no Frieren',
+			otherTitles: ["Frieren: Beyond Journey's End"],
 			description: 'Viaje despues del viaje.',
 			originalLink: 'https://www3.animeflv.net/anime/frieren',
 			status: 'En emision',
@@ -480,9 +546,10 @@ describe('SupabaseWriter', () => {
 			table: 'animes',
 			payload: [
 				{
-					animeId: 'frieren',
-					title: 'Sousou no Frieren',
-					cover_image_key: 'animes/frieren.webp',
+				animeId: 'frieren',
+				title: 'Sousou no Frieren',
+				otherTitles: ["Frieren: Beyond Journey's End"],
+				cover_image_key: 'animes/frieren.webp',
 					carousel_image_keys: ['animes/frieren-banner.webp'],
 					description: 'Viaje despues del viaje.',
 					originalLink: 'https://www3.animeflv.net/anime/frieren',

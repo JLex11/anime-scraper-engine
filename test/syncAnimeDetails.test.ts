@@ -198,6 +198,7 @@ describe('syncAnimeDetails', () => {
 		expect(writerSpy.animeDetails[0]).toMatchObject({
 			animeId: 'mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',
 			title: 'Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru',
+			otherTitles: ['魔物喰らいの冒険者 ~俺だけ魔物を喰らって強くなる~', 'Monster Eater'],
 			type: 'TV',
 			status: 'En emision',
 			coverImageKey: 'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru/4343.jpg',
@@ -383,10 +384,74 @@ describe('syncAnimeDetails', () => {
 				meta: {
 					animeId: 'attack-on-titan',
 					title: 'Attack on Titan',
+					otherTitles: [],
 					type: 'TV',
+					resultCount: 1,
+					attemptedSearches: [
+						{
+							lookupTitle: 'Attack on Titan',
+							query: 'Attack on Titan',
+							resultCount: 1,
+						},
+						{
+							lookupTitle: 'Attack on Titan',
+							query: 'attack on titan',
+							resultCount: 1,
+						},
+					],
 				},
 			},
 		])
+	})
+
+	test('usa titulos alternativos de AnimeFLV para buscar en Jikan', async () => {
+		const writerSpy = createWriterSpy()
+		const jikanSpy = createJikanClientSpy({
+			searchResults: [
+				createSearchResult({
+					mal_id: 64154,
+					title: 'Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru',
+					title_english: 'Monster Eater',
+					title_japanese: '魔物喰らいの冒険者 ~俺だけ魔物を喰らって強くなる~',
+				}),
+			],
+			full: createFullResult({
+				mal_id: 64154,
+				title: 'Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru',
+				title_english: 'Monster Eater',
+				title_japanese: '魔物喰らいの冒険者 ~俺だけ魔物を喰らって強くなる~',
+			}),
+			videos: createVideosResult(),
+		})
+
+		const ctx = createPipelineContext({
+			writer: writerSpy.writer,
+			jikanClient: {
+				searchAnime: async (query: string) => {
+					jikanSpy.calls.searches.push(query)
+					return query === 'Monster Eater' ? jikanSpy.client.searchAnime(query) : []
+				},
+				getAnimeFull: jikanSpy.client.getAnimeFull,
+				getAnimeVideos: jikanSpy.client.getAnimeVideos,
+			} as ReturnType<typeof createPipelineContext>['jikanClient'],
+			fetchHtml: async () => `
+				<div class="Ficha">
+					<h1> Unknown Source Title </h1>
+					<span class="Type tv">Anime</span>
+					<div>
+						<span class="TxtAlt">Monster Eater</span>
+					</div>
+				</div>
+				<div class="AnimeCover"><img src="https://cdn.example/unknown.webp" /></div>
+			`,
+		})
+
+		await syncAnimeDetails(ctx, ['unknown-source-title'])
+
+		expect(jikanSpy.calls.searches).toContain('Unknown Source Title')
+		expect(jikanSpy.calls.searches).toContain('Monster Eater')
+		expect(writerSpy.animeJikanDetails).toHaveLength(1)
+		expect(writerSpy.animeJikanDetails[0]?.malId).toBe(64154)
 	})
 
 	test('si Jikan falla, persiste el detalle base y marca error separado', async () => {
@@ -423,6 +488,7 @@ describe('syncAnimeDetails', () => {
 			{
 				animeId: 'attack-on-titan',
 				title: 'Attack on Titan',
+				otherTitles: [],
 				description: null,
 				originalLink: 'https://www3.animeflv.net/anime/attack-on-titan',
 				status: null,

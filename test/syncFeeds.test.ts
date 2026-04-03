@@ -48,6 +48,22 @@ describe('feed pipelines', () => {
 
 		await syncLatestEpisodes(ctx)
 
+		expect(writerSpy.animeSeedRecords).toEqual([
+			[
+				{
+					animeId: 'naruto-shippuden',
+					title: 'naruto shippuden',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/naruto-shippuden',
+				},
+				{
+					animeId: 'bleach',
+					title: 'bleach',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/bleach',
+				},
+			],
+		])
 		expect(writerSpy.episodes).toHaveLength(1)
 		expect(writerSpy.episodes[0]).toEqual([
 			{
@@ -81,7 +97,7 @@ describe('feed pipelines', () => {
 		})
 	})
 
-	test('syncLatestAnimes encadena feed, detalles y episodios', async () => {
+	test('syncLatestAnimes persiste feed y calienta detalles para una ventana acotada', async () => {
 		const writerSpy = createWriterSpy()
 		const ctx = createPipelineContext({
 			writer: writerSpy.writer,
@@ -94,13 +110,27 @@ describe('feed pipelines', () => {
 
 		await syncLatestAnimes(ctx)
 
+		expect(writerSpy.animeSeedRecords).toEqual([
+			[
+				{
+					animeId: 'naruto',
+					title: 'naruto',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/naruto',
+				},
+				{
+					animeId: 'bleach',
+					title: 'bleach',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/bleach',
+				},
+			],
+		])
 		expect(writerSpy.animeFeedItems).toEqual([
 			{ feedType: 'latest', animeIds: ['naruto', 'bleach'], page: 1 },
 		])
 		expect(writerSpy.animeDetails.map((detail) => detail.animeId)).toEqual(['naruto', 'bleach'])
-		expect(writerSpy.episodes).toHaveLength(2)
-		expect(writerSpy.episodes[0].map((episode) => episode.episodeId)).toEqual(['naruto-1', 'naruto-2'])
-		expect(writerSpy.episodes[1].map((episode) => episode.episodeId)).toEqual(['bleach-10'])
+		expect(writerSpy.episodes).toHaveLength(0)
 		expect(writerSpy.syncStates).toContainEqual({
 			resourceType: 'feed',
 			resourceId: 'latest_animes',
@@ -110,12 +140,6 @@ describe('feed pipelines', () => {
 		expect(writerSpy.syncStates).toContainEqual({
 			resourceType: 'anime_detail',
 			resourceId: 'naruto',
-			status: 'success',
-			errorMessage: undefined,
-		})
-		expect(writerSpy.syncStates).toContainEqual({
-			resourceType: 'anime_episodes',
-			resourceId: 'bleach',
 			status: 'success',
 			errorMessage: undefined,
 		})
@@ -133,6 +157,16 @@ describe('feed pipelines', () => {
 
 		await syncBroadcast(ctx)
 
+		expect(writerSpy.animeSeedRecords).toEqual([
+			[
+				{
+					animeId: 'solo-leveling',
+					title: 'solo leveling',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/solo-leveling',
+				},
+			],
+		])
 		expect(writerSpy.animeFeedItems).toEqual([
 			{ feedType: 'broadcast', animeIds: ['solo-leveling'], page: 1 },
 		])
@@ -158,6 +192,16 @@ describe('feed pipelines', () => {
 
 		await syncTopRated(ctx)
 
+		expect(writerSpy.animeSeedRecords).toEqual([
+			[
+				{
+					animeId: 'frieren',
+					title: 'frieren',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/frieren',
+				},
+			],
+		])
 		expect(writerSpy.animeFeedItems).toEqual([
 			{ feedType: 'rating', animeIds: ['frieren'], page: 1 },
 		])
@@ -186,6 +230,30 @@ describe('feed pipelines', () => {
 
 		await syncDirectoryAnimes(ctx, 3)
 
+		expect(writerSpy.animeSeedRecords).toEqual([
+			[
+				{
+					animeId: 'naruto',
+					title: 'naruto',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/naruto',
+				},
+				{
+					animeId: 'bleach',
+					title: 'bleach',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/bleach',
+				},
+			],
+			[
+				{
+					animeId: 'one-piece',
+					title: 'one piece',
+					type: 'Anime',
+					originalLink: 'https://www3.animeflv.net/anime/one-piece',
+				},
+			],
+		])
 		expect(writerSpy.animeFeedItems).toEqual([
 			{ feedType: 'directory', animeIds: ['naruto', 'bleach'], page: 1 },
 			{ feedType: 'directory', animeIds: ['one-piece'], page: 3 },

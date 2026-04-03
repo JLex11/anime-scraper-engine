@@ -25,7 +25,16 @@ export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const writer = new SupabaseWriter(supabase)
 	const r2Binding = asR2Binding(env[config.r2BucketBinding])
 	const r2Writer = new R2Writer(config, r2Binding as any)
-	const jikanClient = new JikanClient(config)
+	const jikanClient = new JikanClient({
+		...config,
+		onLog: (level, message, meta) => {
+			if (level === 'warn') {
+				logger.warn(message, meta)
+				return
+			}
+			logger.info(message, meta)
+		},
+	})
 
 	return {
 		config,
