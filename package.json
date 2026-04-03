@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "test": "bun test",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy",
     "typecheck": "bunx tsc --noEmit",
     "sync:once": "SCRAPER_RUN_ONCE=true bun run src/index.ts",
     "bench:htmlrewriter": "bun run test/benchmark-htmlrewriter.ts"
@@ -16,6 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.12",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "^4.40.0"
   }
 }

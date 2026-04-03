@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
-import { config } from '../config'
+import type { AppConfig } from '../config'
 
-export const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-	auth: {
-		persistSession: false,
-		autoRefreshToken: false,
-	},
-})
+export const createSupabaseClient = (appConfig: AppConfig) => {
+	return createClient(appConfig.supabaseUrl, appConfig.supabaseServiceRoleKey, {
+		auth: {
+			persistSession: false,
+			autoRefreshToken: false,
+		},
+	})
+}

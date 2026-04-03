@@ -1,4 +1,3 @@
-import { fetchAnimeFlvHtml } from '../clients/animeflvClient'
 import { extractEpisodeIds } from '../extractors/extractIds'
 import type { EpisodeDetail } from '../types/models'
 import type { PipelineContext } from './context'
@@ -14,9 +13,10 @@ const parseAnimeIdFromEpisode = (episodeId: string) => {
 }
 
 export const syncLatestEpisodes = async (ctx: PipelineContext) => {
-	const html = await fetchAnimeFlvHtml('/')
+	const html = await ctx.fetchHtml('/')
 	if (!html) {
 		ctx.logger.warn('syncLatestEpisodes: homepage unavailable')
+		await ctx.writer.markSyncState('feed', 'latest_episodes', 'error', 'Homepage unavailable')
 		return
 	}
 

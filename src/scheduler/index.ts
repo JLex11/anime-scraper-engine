@@ -8,16 +8,34 @@ import { syncAnimeDetails } from '../pipelines/syncAnimeDetails'
 import { syncAnimeEpisodes } from '../pipelines/syncAnimeEpisodes'
 import type { PipelineContext } from '../pipelines/context'
 
-type Task = {
-	name: string
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+
+export const CRON_EVERY_15 = '*/15 * * * *'
+export const CRON_EVERY_30 = '*/30 * * * *'
+export const CRON_DAILY_DIRECTORY = '5 0 * * *'
+export const CRON_DAILY_DETAILS = '20 0 * * *'
+
+export type TaskName =
+	| 'sync-latest-animes'
+	| 'sync-latest-episodes'
+	| 'sync-broadcast'
+	| 'sync-top-rated'
+	| 'sync-directory'
+	| 'sync-details-and-episodes'
+	| 'sync-episode-sources'
+
+type TaskSpec = {
+	name: TaskName
 	intervalMs: number
 	run: () => Promise<void>
 }
 
-const MINUTE = 60_000
-const HOUR = 60 * MINUTE
+type ScheduledTaskHandle = {
+	cancel: () => void
+}
 
-const buildTasks = (ctx: PipelineContext): Task[] => [
+const buildTaskSpecs = (ctx: PipelineContext): TaskSpec[] => [
 	{
 		name: 'sync-latest-animes',
 		intervalMs: 15 * MINUTE,
@@ -56,13 +74,13 @@ const buildTasks = (ctx: PipelineContext): Task[] => [
 		name: 'sync-episode-sources',
 		intervalMs: 30 * MINUTE,
 		run: async () => {
-			const episodeIds = await ctx.writer.getRecentEpisodeIds(300)
+			const episodeIds = await ctx.writer.getEpisodeIdsNeedingSourceRefresh(300)
 			await syncEpisodeSources(ctx, episodeIds)
 		},
 	},
 ]
 
-const runTask = async (ctx: PipelineContext, task: Task) => {
+const runTask = async (ctx: PipelineContext, task: TaskSpec) => {
 	const startedAt = Date.now()
 	ctx.logger.info(`task.start ${task.name}`)
 
@@ -71,27 +89,114 @@ const runTask = async (ctx: PipelineContext, task: Task) => {
 		ctx.logger.info(`task.success ${task.name}`, { durationMs: Date.now() - startedAt })
 	} catch (error) {
 		ctx.logger.error(`task.error ${task.name}`, { error: String(error), durationMs: Date.now() - startedAt })
+		throw error
 	}
 }
 
-export const runScheduler = async (ctx: PipelineContext) => {
-	const tasks = buildTasks(ctx)
+const runTasksSequentially = async (ctx: PipelineContext, tasks: TaskSpec[], throwOnError = true) => {
+	const errors: Error[] = []
 
-	// Warm up all pipelines on startup so API has data quickly.
 	for (const task of tasks) {
-		await runTask(ctx, task)
+		try {
+			await runTask(ctx, task)
+		} catch (error) {
+			errors.push(error instanceof Error ? error : new Error(String(error)))
+		}
 	}
 
-	for (const task of tasks) {
-		setInterval(() => {
-			void runTask(ctx, task)
-		}, task.intervalMs)
+	if (throwOnError && errors.length > 0) {
+		throw new AggregateError(errors, 'One or more scheduler tasks failed')
+	}
+}
+
+export const runTaskByName = async (ctx: PipelineContext, taskName: TaskName) => {
+	const task = buildTaskSpecs(ctx).find((item) => item.name === taskName)
+	if (!task) {
+		throw new Error(`Task not found: ${taskName}`)
+	}
+
+	await runTask(ctx, task)
+}
+
+export const getTaskNamesForCron = (cronExpression: string): TaskName[] => {
+	switch (cronExpression) {
+		case CRON_EVERY_15:
+			return ['sync-latest-animes', 'sync-latest-episodes']
+		case CRON_EVERY_30:
+			return ['sync-broadcast', 'sync-top-rated', 'sync-episode-sources']
+		case CRON_DAILY_DIRECTORY:
+			return ['sync-directory']
+		case CRON_DAILY_DETAILS:
+			return ['sync-details-and-episodes']
+		default:
+			return []
+	}
+}
+
+export const runCron = async (ctx: PipelineContext, cronExpression: string) => {
+	const taskNames = getTaskNamesForCron(cronExpression)
+
+	if (taskNames.length === 0) {
+		ctx.logger.warn('No task registered for cron expression', { cronExpression })
+		return
+	}
+
+	const tasks = buildTaskSpecs(ctx).filter((task) => taskNames.includes(task.name))
+	await runTasksSequentially(ctx, tasks)
+}
+
+export const runScheduler = async (ctx: PipelineContext) => {
+	const tasks = buildTaskSpecs(ctx)
+
+	// Warm up all pipelines on startup so API has data quickly.
+	await runTasksSequentially(ctx, tasks, false)
+
+	const handles = tasks.map((task) => scheduleTaskLoop(ctx, task))
+
+	const cancelAll = () => {
+		for (const handle of handles) {
+			handle.cancel()
+		}
+	}
+
+	if (typeof process !== 'undefined' && typeof process.once === 'function') {
+		process.once('SIGINT', cancelAll)
+		process.once('SIGTERM', cancelAll)
 	}
 }
 
 export const runOnce = async (ctx: PipelineContext) => {
-	const tasks = buildTasks(ctx)
-	for (const task of tasks) {
-		await runTask(ctx, task)
+	const tasks = buildTaskSpecs(ctx)
+	await runTasksSequentially(ctx, tasks)
+}
+
+const scheduleTaskLoop = (ctx: PipelineContext, task: TaskSpec): ScheduledTaskHandle => {
+	let timer: ReturnType<typeof setTimeout> | null = null
+	let cancelled = false
+
+	const scheduleNext = () => {
+		if (cancelled) return
+		timer = setTimeout(() => {
+			void runCycle()
+		}, task.intervalMs)
+	}
+
+	const runCycle = async () => {
+		try {
+			await runTask(ctx, task)
+		} catch {
+			// runTask already logs the failure; keep the loop alive.
+		} finally {
+			scheduleNext()
+		}
+	}
+
+	scheduleNext()
+
+	return {
+		cancel: () => {
+			cancelled = true
+			if (timer) clearTimeout(timer)
+		},
 	}
 }

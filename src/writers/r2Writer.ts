@@ -1,5 +1,9 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
-import { config } from '../config'
+import type { AppConfig } from '../config'
+
+type R2BucketLike = {
+	put: (key: string, value: ArrayBuffer | Uint8Array, options?: { httpMetadata?: { contentType?: string } }) => Promise<unknown>
+}
 
 const sanitizeFileName = (raw: string) => {
 	return raw
@@ -19,14 +23,26 @@ const buildObjectKey = (prefix: string, filename: string) => {
 export class R2Writer {
 	private readonly enabled: boolean
 	private readonly client: S3Client | null
+	private readonly bucketBinding: R2BucketLike | null
 
-	constructor() {
+	constructor(
+		private readonly appConfig: AppConfig,
+		bucketBinding?: R2BucketLike | null
+	) {
+		this.bucketBinding = bucketBinding ?? null
+
+		if (this.bucketBinding != null && this.appConfig.r2PublicBaseUrl) {
+			this.enabled = true
+			this.client = null
+			return
+		}
+
 		this.enabled = Boolean(
-			config.r2AccountId &&
-				config.r2AccessKeyId &&
-				config.r2SecretAccessKey &&
-				config.r2Bucket &&
-				config.r2PublicBaseUrl
+			this.appConfig.r2AccountId &&
+				this.appConfig.r2AccessKeyId &&
+				this.appConfig.r2SecretAccessKey &&
+				this.appConfig.r2Bucket &&
+				this.appConfig.r2PublicBaseUrl
 		)
 
 		if (!this.enabled) {
@@ -36,16 +52,16 @@ export class R2Writer {
 
 		this.client = new S3Client({
 			region: 'auto',
-			endpoint: `https://${config.r2AccountId}.r2.cloudflarestorage.com`,
+			endpoint: `https://${this.appConfig.r2AccountId}.r2.cloudflarestorage.com`,
 			credentials: {
-				accessKeyId: config.r2AccessKeyId,
-				secretAccessKey: config.r2SecretAccessKey,
+				accessKeyId: this.appConfig.r2AccessKeyId,
+				secretAccessKey: this.appConfig.r2SecretAccessKey,
 			},
 		})
 	}
 
 	isEnabled() {
-		return this.enabled && this.client != null
+		return this.enabled
 	}
 
 	async mirrorFromUrl(imageUrl: string, prefix = 'animes'): Promise<{ url: string; key: string | null }> {
@@ -53,7 +69,7 @@ export class R2Writer {
 			return { url: imageUrl, key: null }
 		}
 
-		const response = await fetch(imageUrl, { signal: AbortSignal.timeout(config.requestTimeoutMs) })
+		const response = await fetch(imageUrl, { signal: AbortSignal.timeout(this.appConfig.requestTimeoutMs) })
 		if (!response.ok) {
 			return { url: imageUrl, key: null }
 		}
@@ -61,15 +77,22 @@ export class R2Writer {
 		const buffer = await response.arrayBuffer()
 		const originalFilename = imageUrl.split('/').pop() || 'image.webp'
 		const objectKey = buildObjectKey(prefix, originalFilename)
+		const contentType = response.headers.get('content-type') || 'image/webp'
 
-		await this.client?.send(new PutObjectCommand({
-			Bucket: config.r2Bucket,
-			Key: objectKey,
-			Body: new Uint8Array(buffer),
-			ContentType: response.headers.get('content-type') || 'image/webp',
-		}))
+		if (this.bucketBinding != null) {
+			await this.bucketBinding.put(objectKey, buffer, { httpMetadata: { contentType } })
+		} else {
+			await this.client?.send(
+				new PutObjectCommand({
+					Bucket: this.appConfig.r2Bucket,
+					Key: objectKey,
+					Body: new Uint8Array(buffer),
+					ContentType: contentType,
+				})
+			)
+		}
 
-		const base = config.r2PublicBaseUrl.replace(/\/+$/, '')
+		const base = this.appConfig.r2PublicBaseUrl.replace(/\/+$/, '')
 		return { url: `${base}/${objectKey}`, key: objectKey }
 	}
 }

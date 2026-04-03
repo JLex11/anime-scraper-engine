@@ -1,0 +1,25 @@
+name = "anime-scraper-engine"
+main = "src/worker.ts"
+compatibility_date = "2026-04-02"
+workers_dev = true
+
+[triggers]
+crons = [
+  "*/15 * * * *",
+  "*/30 * * * *",
+  "5 0 * * *",
+  "20 0 * * *",
+]
+
+[vars]
+ANIMEFLV_BASE_URL = "https://www3.animeflv.net"
+SCRAPER_MAX_CONCURRENCY = "6"
+SCRAPER_REQUEST_TIMEOUT_MS = "15000"
+SCRAPER_REQUEST_RETRY_ATTEMPTS = "1"
+SCRAPER_LOG_LEVEL = "info"
+R2_BUCKET = "anime-app"
+R2_BUCKET_BINDING = "R2"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "anime-app"

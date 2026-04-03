@@ -1,12 +1,12 @@
-import { fetchAnimeFlvHtml } from '../clients/animeflvClient'
 import { extractAnimeIds } from '../extractors/extractIds'
 import { syncAnimeDetails } from './syncAnimeDetails'
 import type { PipelineContext } from './context'
 
 export const syncBroadcast = async (ctx: PipelineContext) => {
-	const html = await fetchAnimeFlvHtml('/')
+	const html = await ctx.fetchHtml('/')
 	if (!html) {
 		ctx.logger.warn('syncBroadcast: homepage unavailable')
+		await ctx.writer.markSyncState('feed', 'broadcast_animes', 'error', 'Homepage unavailable')
 		return
 	}
 

@@ -1,5 +1,3 @@
-import { fetchAnimeFlvHtml } from '../clients/animeflvClient'
-import { config } from '../config'
 import { extractEpisodeNumbers } from '../extractors/extractScriptValues'
 import type { EpisodeDetail } from '../types/models'
 import { runWithConcurrency } from '../utils/concurrency'
@@ -9,16 +7,28 @@ export const syncAnimeEpisodes = async (ctx: PipelineContext, animeIds: string[]
 	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean)
 	if (uniqueIds.length === 0) return
 
-	await runWithConcurrency(uniqueIds, config.maxConcurrency, async (animeId) => {
+	await runWithConcurrency(uniqueIds, ctx.config.maxConcurrency, async (animeId) => {
 		try {
-			const html = await fetchAnimeFlvHtml(`/anime/${animeId}`)
+			const html = await ctx.fetchHtml(`/anime/${animeId}`)
 			if (!html) {
 				await ctx.writer.markSyncState('anime_episodes', animeId, 'error', 'Anime episode page unavailable')
 				return
 			}
 
 			const episodeNumbers = await extractEpisodeNumbers(html)
-			const episodes: EpisodeDetail[] = episodeNumbers.map((episodeNumber) => {
+			if (episodeNumbers.length === 0) {
+				await ctx.writer.markSyncState('anime_episodes', animeId, 'error', 'Could not parse anime episodes')
+				return
+			}
+			const maxKnownEpisode = await ctx.writer.getMaxEpisodeNumberByAnimeId(animeId)
+			const newEpisodeNumbers = episodeNumbers.filter((episodeNumber) => episodeNumber > maxKnownEpisode)
+
+			if (newEpisodeNumbers.length === 0) {
+				await ctx.writer.markSyncState('anime_episodes', animeId, 'success')
+				return
+			}
+
+			const episodes: EpisodeDetail[] = newEpisodeNumbers.map((episodeNumber) => {
 				const episodeId = `${animeId}-${episodeNumber}`
 				return {
 					episodeId,

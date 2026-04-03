@@ -1,5 +1,3 @@
-import { fetchAnimeFlvHtml } from '../clients/animeflvClient'
-import { config } from '../config'
 import { extractEpisodeVideos } from '../extractors/extractScriptValues'
 import { runWithConcurrency } from '../utils/concurrency'
 import type { PipelineContext } from './context'
@@ -12,9 +10,9 @@ export const syncEpisodeSources = async (ctx: PipelineContext, episodeIds: strin
 	const uniqueIds = Array.from(new Set(episodeIds)).filter(Boolean)
 	if (uniqueIds.length === 0) return
 
-	await runWithConcurrency(uniqueIds, config.maxConcurrency, async (episodeId) => {
+	await runWithConcurrency(uniqueIds, ctx.config.maxConcurrency, async (episodeId) => {
 		try {
-			const html = await fetchAnimeFlvHtml(`/ver/${episodeId}`)
+			const html = await ctx.fetchHtml(`/ver/${episodeId}`)
 			if (!html) {
 				await ctx.writer.markSyncState('episode_sources', episodeId, 'error', 'Episode source page unavailable')
 				return

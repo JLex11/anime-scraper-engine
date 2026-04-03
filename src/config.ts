@@ -1,23 +1,49 @@
-const getEnv = (key: string, required = true) => {
-	const value = process.env[key]
+export type RuntimeEnv = Record<string, unknown>
+
+export type AppConfig = {
+	supabaseUrl: string
+	supabaseServiceRoleKey: string
+	animeFlvBaseUrl: string
+	requestTimeoutMs: number
+	requestRetryAttempts: number
+	maxConcurrency: number
+	logLevel: string
+	runOnce: boolean
+	manualRunToken: string
+	r2AccountId: string
+	r2AccessKeyId: string
+	r2SecretAccessKey: string
+	r2Bucket: string
+	r2PublicBaseUrl: string
+	r2BucketBinding: string
+}
+
+const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+const readEnv = (env: RuntimeEnv, key: string, required = true) => {
+	const value = asString(env[key])
 	if (required && !value) {
 		throw new Error(`Missing required env var: ${key}`)
 	}
-
-	return value ?? ''
+	return value
 }
 
-export const config = {
-	supabaseUrl: getEnv('SUPABASE_URL'),
-	supabaseServiceRoleKey: getEnv('SUPABASE_SERVICE_ROLE_KEY'),
-	animeFlvBaseUrl: process.env.ANIMEFLV_BASE_URL || 'https://www3.animeflv.net',
-	requestTimeoutMs: Number(process.env.SCRAPER_REQUEST_TIMEOUT_MS || '15000'),
-	maxConcurrency: Number(process.env.SCRAPER_MAX_CONCURRENCY || '6'),
-	logLevel: process.env.SCRAPER_LOG_LEVEL || 'info',
-	runOnce: process.env.SCRAPER_RUN_ONCE === 'true',
-	r2AccountId: process.env.R2_ACCOUNT_ID || '',
-	r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-	r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-	r2Bucket: process.env.R2_BUCKET || 'anime-app',
-	r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || '',
+export const createConfig = (env: RuntimeEnv): AppConfig => {
+	return {
+		supabaseUrl: readEnv(env, 'SUPABASE_URL'),
+		supabaseServiceRoleKey: readEnv(env, 'SUPABASE_SERVICE_ROLE_KEY'),
+		animeFlvBaseUrl: asString(env.ANIMEFLV_BASE_URL) || 'https://www3.animeflv.net',
+		requestTimeoutMs: Number(asString(env.SCRAPER_REQUEST_TIMEOUT_MS) || '15000'),
+		requestRetryAttempts: Number(asString(env.SCRAPER_REQUEST_RETRY_ATTEMPTS) || '1'),
+		maxConcurrency: Number(asString(env.SCRAPER_MAX_CONCURRENCY) || '6'),
+		logLevel: asString(env.SCRAPER_LOG_LEVEL) || 'info',
+		runOnce: asString(env.SCRAPER_RUN_ONCE) === 'true',
+		manualRunToken: asString(env.SCRAPER_MANUAL_RUN_TOKEN),
+		r2AccountId: asString(env.R2_ACCOUNT_ID),
+		r2AccessKeyId: asString(env.R2_ACCESS_KEY_ID),
+		r2SecretAccessKey: asString(env.R2_SECRET_ACCESS_KEY),
+		r2Bucket: asString(env.R2_BUCKET) || 'anime-app',
+		r2PublicBaseUrl: asString(env.R2_PUBLIC_BASE_URL),
+		r2BucketBinding: asString(env.R2_BUCKET_BINDING) || 'R2',
+	}
 }

@@ -27,15 +27,23 @@ export const parseScriptAssignment = async <T>(html: string, variableName: strin
 export const extractEpisodeNumbers = async (html: string): Promise<number[]> => {
 	const episodes = await parseScriptAssignment<Array<[number, string]>>(html, 'episodes')
 	if (!episodes) return []
-	return episodes.map(([episode]) => episode).filter(episode => Number.isFinite(episode))
+	return Array.from(
+		new Set(
+			episodes
+				.map(([episode]) => episode)
+				.filter((episode) => Number.isInteger(episode) && episode > 0)
+		)
+	)
 }
 
 export const extractEpisodeVideos = async (html: string) => {
 	const episode = await parseScriptAssignment<number | string>(html, 'episode_number')
 	const videos = await parseScriptAssignment<unknown>(html, 'videos')
+	const normalizedEpisode =
+		typeof episode === 'string' ? Number(episode) : typeof episode === 'number' ? episode : 0
 
 	return {
-		episode: typeof episode === 'string' ? Number(episode) : (episode ?? 0),
+		episode: Number.isFinite(normalizedEpisode) ? normalizedEpisode : 0,
 		videos: videos ?? [],
 	}
 }

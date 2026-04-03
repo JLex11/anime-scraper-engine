@@ -1,12 +1,12 @@
-import { fetchAnimeFlvHtml } from '../clients/animeflvClient'
 import { extractAnimeIds } from '../extractors/extractIds'
 import { syncAnimeDetails } from './syncAnimeDetails'
 import type { PipelineContext } from './context'
 
 export const syncTopRated = async (ctx: PipelineContext) => {
-	const html = await fetchAnimeFlvHtml('/browse?status=1&order=rating')
+	const html = await ctx.fetchHtml('/browse?status=1&order=rating')
 	if (!html) {
 		ctx.logger.warn('syncTopRated: rating page unavailable')
+		await ctx.writer.markSyncState('feed', 'rating_animes', 'error', 'Rating page unavailable')
 		return
 	}
 
