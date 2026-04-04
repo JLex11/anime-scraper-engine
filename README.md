@@ -277,7 +277,7 @@ Cada push a `master` o `main`:
 */15 * * * *     -> sync-latest-animes, sync-latest-episodes
 */30 * * * *     -> sync-broadcast, sync-top-rated, sync-episode-sources
 5 0 * * *        -> sync-directory
-20 0 * * *       -> sync-details-and-episodes
+20 */6 * * *     -> sync-details-and-episodes, sync-anime-images
 ```
 
 Los cron del Worker corren en UTC.

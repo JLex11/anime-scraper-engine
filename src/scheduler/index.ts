@@ -11,14 +11,14 @@ import { syncTopRated } from "../pipelines/syncTopRated";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
-const DAILY_DETAIL_LIMIT = 3;
-const DAILY_IMAGE_LIMIT = 3;
+const DAILY_DETAIL_LIMIT = 10;
+const DAILY_IMAGE_LIMIT = 10;
 const EPISODE_SOURCE_REFRESH_LIMIT = 12;
 
 export const CRON_EVERY_15 = "*/15 * * * *";
 export const CRON_EVERY_30 = "*/30 * * * *";
 export const CRON_DAILY_DIRECTORY = "5 0 * * *";
-export const CRON_DAILY_DETAILS = "20 0 * * *";
+export const CRON_DAILY_DETAILS = "20 */6 * * *";
 
 export type TaskName =
 	| "sync-latest-animes"
