@@ -38,8 +38,9 @@ bunx tsc --noEmit
 Trigger manual del Worker:
 
 - Configura `SCRAPER_MANUAL_RUN_TOKEN`
-- Llama `POST /run-once` con `Authorization: Bearer <token>` o `x-run-once-token`
-- En Cloudflare Workers, para pruebas manuales usa tareas puntuales:
+- Llama endpoints `POST` con `Authorization: Bearer <token>` o `x-run-once-token`
+- Para tareas puntuales del scheduler sigue existiendo `POST /run-once`
+- En Cloudflare Workers, para pruebas manuales puedes usar:
 
 ```bash
 curl -X POST 'https://<worker>/run-once?task=sync-latest-animes' \
@@ -57,6 +58,117 @@ Tareas disponibles:
 - `sync-episode-sources`
 
 Nota: ejecutar `/run-once` sin `task` intenta correr todo el scheduler en una sola invocacion; en Cloudflare puede pegar el limite de subrequests.
+
+### Cómo se evita el límite de Workers
+
+El proyecto no intenta hacer un scraping masivo en una sola invocación. En vez de eso, divide el trabajo en piezas pequeñas y persistentes:
+
+```text
+cron / POST manual
+    │
+    ▼
+  scheduler
+    │
+    ├─► tareas pequeñas por tipo de contenido
+    │
+    ├─► concurrencia limitada
+    │
+    ├─► fetch por lotes chicos
+    │
+    ├─► upserts incrementales en Supabase
+    │
+    └─► sync_state para reintentos / seguimiento
+```
+
+Puntos clave:
+
+- Los cron disparan solo un subconjunto de tareas por invocación.
+- `syncLatestAnimes` y `syncLatestEpisodes` toman solo una parte del feed, no todo el sitio.
+- `syncLatestAnimes` además calienta solo unos pocos detalles para no gastar presupuesto de subrequests.
+- `syncAnimeDetails`, `syncAnimeEpisodes` y `syncEpisodeSources` procesan listas acotadas con control de concurrencia.
+- El estado queda guardado en Supabase, así cada corrida puede seguir desde datos ya persistidos.
+
+### Scrapear animes concretos
+
+Endpoint:
+
+- `POST /scrape/anime`
+
+Body JSON:
+
+- `animeId`: string opcional
+- `animeIds`: string[] opcional
+- `includeDetails`: boolean opcional, default `true`
+- `includeEpisodes`: boolean opcional, default `true`
+
+Reglas:
+
+- Debes enviar `animeId` o `animeIds`
+- Al menos uno entre `includeDetails` o `includeEpisodes` debe quedar en `true`
+- El worker hace seed minimo del anime antes de ejecutar los pipelines
+
+Ejemplo:
+
+```bash
+curl -X POST 'https://<worker>/scrape/anime' \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "animeIds": ["one-piece", "bleach-sennen-kessen-hen"],
+    "includeDetails": true,
+    "includeEpisodes": true
+  }'
+```
+
+Respuesta:
+
+```json
+{
+  "ok": true,
+  "mode": "scrape-anime",
+  "animeIds": ["one-piece", "bleach-sennen-kessen-hen"],
+  "includeDetails": true,
+  "includeEpisodes": true
+}
+```
+
+### Scrapear fuentes de episodios concretos
+
+Endpoint:
+
+- `POST /scrape/episode-sources`
+
+Body JSON:
+
+- `episodeId`: string opcional
+- `episodeIds`: string[] opcional
+
+Reglas:
+
+- Debes enviar `episodeId` o `episodeIds`
+- Cada `episodeId` debe terminar en sufijo numerico, por ejemplo `naruto-12`
+- El worker hace seed minimo de anime y episodio antes de refrescar `episode_sources`
+
+Ejemplo:
+
+```bash
+curl -X POST 'https://<worker>/scrape/episode-sources' \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "episodeIds": ["one-piece-1000", "bleach-7"]
+  }'
+```
+
+Respuesta:
+
+```json
+{
+  "ok": true,
+  "mode": "scrape-episode-sources",
+  "episodeIds": ["one-piece-1000", "bleach-7"]
+}
+```
 
 ## Imagenes (R2)
 
@@ -163,4 +275,20 @@ Smoke test manual:
 ```bash
 curl -X POST 'http://127.0.0.1:8787/run-once?task=sync-latest-animes' \
   -H 'Authorization: Bearer <token>'
+```
+
+Ejemplos locales de endpoints manuales:
+
+```bash
+curl -X POST 'http://127.0.0.1:8787/scrape/anime' \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"animeId":"one-piece"}'
+```
+
+```bash
+curl -X POST 'http://127.0.0.1:8787/scrape/episode-sources' \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"episodeId":"one-piece-1000"}'
 ```
