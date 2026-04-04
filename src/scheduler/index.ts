@@ -12,7 +12,7 @@ import { syncTopRated } from "../pipelines/syncTopRated";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAILY_DETAIL_LIMIT = 10;
-const DAILY_IMAGE_LIMIT = 10;
+const DAILY_IMAGE_LIMIT = 3;
 const EPISODE_SOURCE_REFRESH_LIMIT = 12;
 
 export const CRON_EVERY_15 = "*/15 * * * *";

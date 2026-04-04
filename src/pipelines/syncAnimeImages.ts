@@ -6,9 +6,10 @@ import type { PipelineContext } from "./context";
 const RESOURCE_TYPE = "anime_carousel_images";
 const TARGET_BANNERS = 3;
 const REFRESH_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
-const PIPELINE_CONCURRENCY = 2;
-const SEARCH_RESULTS_LIMIT = 10;
-const SEARCH_CANDIDATE_POOL = 12;
+const PIPELINE_CONCURRENCY = 1;
+const SEARCH_RESULTS_LIMIT = 4;
+const SEARCH_CANDIDATE_POOL = 4;
+const MIRROR_CONCURRENCY = 1;
 const BACKOFF_DAYS = [1, 3, 7, 14];
 
 type PersistedBanner = {
@@ -154,7 +155,7 @@ const mirrorCandidates = async (
 	const mirrored = (
 		await runWithConcurrency(
 			candidates,
-			Math.min(2, Math.max(1, candidates.length)),
+			Math.min(MIRROR_CONCURRENCY, Math.max(1, candidates.length)),
 			async (candidate) => {
 				try {
 					const result = await ctx.r2Writer?.mirrorFromUrl(
