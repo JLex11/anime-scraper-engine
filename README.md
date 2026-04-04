@@ -255,16 +255,15 @@ Configura estos secrets en el repo:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+
+Los secrets runtime del Worker (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SCRAPER_MANUAL_RUN_TOKEN`, `R2_PUBLIC_BASE_URL`, `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`, etc.) se pueden gestionar directamente en Cloudflare. El workflow de GitHub solo autentica el deploy y no vuelve a subir esos secrets.
+
+Opcionales si prefieres sincronizar runtime secrets también desde GitHub Actions:
+
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SCRAPER_MANUAL_RUN_TOKEN`
-
-Opcionales si expones imagenes desde R2:
-
 - `R2_PUBLIC_BASE_URL`
-
-Opcionales para `sync-anime-images`:
-
 - `GOOGLE_CSE_API_KEY`
 - `GOOGLE_CSE_CX`
 
