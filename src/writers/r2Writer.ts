@@ -35,7 +35,7 @@ export class R2Writer {
 	) {
 		this.bucketBinding = bucketBinding ?? null;
 
-		if (this.bucketBinding != null && this.appConfig.r2PublicBaseUrl) {
+		if (this.bucketBinding != null) {
 			this.enabled = true;
 			this.client = null;
 			return;
@@ -45,8 +45,7 @@ export class R2Writer {
 			this.appConfig.r2AccountId &&
 				this.appConfig.r2AccessKeyId &&
 				this.appConfig.r2SecretAccessKey &&
-				this.appConfig.r2Bucket &&
-				this.appConfig.r2PublicBaseUrl,
+				this.appConfig.r2Bucket,
 		);
 
 		if (!this.enabled) {
@@ -104,6 +103,9 @@ export class R2Writer {
 		}
 
 		const base = this.appConfig.r2PublicBaseUrl.replace(/\/+$/, "");
-		return { url: `${base}/${objectKey}`, key: objectKey };
+		return {
+			url: base ? `${base}/${objectKey}` : imageUrl,
+			key: objectKey,
+		};
 	}
 }

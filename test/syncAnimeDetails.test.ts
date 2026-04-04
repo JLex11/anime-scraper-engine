@@ -195,19 +195,18 @@ describe('syncAnimeDetails', () => {
 		expect(jikanSpy.calls.full).toEqual([64154])
 		expect(jikanSpy.calls.videos).toEqual([64154])
 		expect(writerSpy.animeDetails).toHaveLength(1)
-		expect(writerSpy.animeDetails[0]).toMatchObject({
-			animeId: 'mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',
-			title: 'Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru',
-			otherTitles: ['魔物喰らいの冒険者 ~俺だけ魔物を喰らって強くなる~', 'Monster Eater'],
-			type: 'TV',
-			status: 'En emision',
-			coverImageKey: 'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru/4343.jpg',
-			images: {
-				coverImage:
-					'https://r2.example/animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru/4343.jpg',
-				carouselImages: [],
-			},
-		})
+			expect(writerSpy.animeDetails[0]).toMatchObject({
+				animeId: 'mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',
+				title: 'Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru',
+				otherTitles: ['魔物喰らいの冒険者 ~俺だけ魔物を喰らって強くなる~', 'Monster Eater'],
+				type: 'TV',
+				status: 'En emision',
+				coverImageKey: 'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru/4343.jpg',
+				images: {
+					coverImage: '/uploads/animes/covers/4343.jpg',
+					carouselImages: [],
+				},
+			})
 		expect(writerSpy.animeJikanDetails).toHaveLength(1)
 		expect(writerSpy.animeJikanDetails[0]).toMatchObject({
 			animeId: 'mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru',

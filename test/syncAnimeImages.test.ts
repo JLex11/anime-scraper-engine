@@ -169,4 +169,58 @@ describe("syncAnimeImages", () => {
 			"2026-04-05T00:00:00.000Z",
 		);
 	});
+
+	test("permite bucket privado y persiste keys aunque no haya url publica", async () => {
+		const writerSpy = createWriterSpy();
+		writerSpy.animeCarouselMetaById.set("yomi-no-tsugai", {
+			animeId: "yomi-no-tsugai",
+			title: "Yomi no Tsugai",
+			otherTitles: [],
+			images: {
+				coverImage: "/uploads/animes/covers/4351.jpg",
+				carouselImages: [],
+			},
+			carouselImageKeys: [],
+		});
+
+		const ctx = createPipelineContext({
+			writer: writerSpy.writer,
+			config: {
+				r2PublicBaseUrl: "",
+			},
+			googleSearchClient: {
+				searchImageBanners: async () => [
+					{
+						link: "https://img.example/yomi-1.jpg",
+						title: null,
+						mime: null,
+						width: 1200,
+						height: 675,
+					},
+				],
+			} as unknown as PipelineContext["googleSearchClient"],
+			r2Writer: {
+				isEnabled: () => true,
+				mirrorFromUrl: async () => ({
+					url: "https://img.example/yomi-1.jpg",
+					key: "animes/yomi-no-tsugai/carousel/yomi-1.jpg",
+				}),
+			} as unknown as NonNullable<PipelineContext["r2Writer"]>,
+		});
+
+		await syncAnimeImages(ctx, ["yomi-no-tsugai"], now);
+
+		expect(writerSpy.updatedCarousels).toHaveLength(1);
+		expect(writerSpy.updatedCarousels[0]?.carouselImageKeys).toEqual([
+			"animes/yomi-no-tsugai/carousel/yomi-1.jpg",
+		]);
+		expect(
+			writerSpy.updatedCarousels[0]?.images?.carouselImages?.[0]?.link,
+		).toBeNull();
+		expect(writerSpy.fullSyncStates.at(-1)).toMatchObject({
+			resourceType: "anime_carousel_images",
+			resourceId: "yomi-no-tsugai",
+			status: "success",
+		});
+	});
 });

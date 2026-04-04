@@ -289,8 +289,10 @@ export const syncAnimeDetails = async (
 							detail.images.coverImage,
 							`animes/${animeId}`,
 						);
-						detail.images.coverImage = mirrored.url;
 						detail.coverImageKey = mirrored.key;
+						if (ctx.config.r2PublicBaseUrl) {
+							detail.images.coverImage = mirrored.url;
+						}
 					} catch (error) {
 						ctx.logger.warn("syncAnimeDetails: cover mirror failed", {
 							animeId,

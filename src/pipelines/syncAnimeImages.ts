@@ -12,7 +12,7 @@ const SEARCH_CANDIDATE_POOL = 12;
 const BACKOFF_DAYS = [1, 3, 7, 14];
 
 type PersistedBanner = {
-	link: string;
+	link: string | null;
 	key: string;
 	width: number;
 	height: number;
@@ -161,9 +161,9 @@ const mirrorCandidates = async (
 						candidate.link,
 						`animes/${animeId}/carousel`,
 					);
-					if (!result?.key || !result.url) return null;
+					if (!result?.key) return null;
 					return {
-						link: result.url,
+						link: ctx.config.r2PublicBaseUrl ? result.url : null,
 						key: result.key,
 						width: candidate.width,
 						height: candidate.height,
