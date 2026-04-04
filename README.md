@@ -204,7 +204,7 @@ Este repo ya incluye:
 
 - `wrangler.toml` con `scheduled` crons
 - entrypoint Worker en `src/worker.ts`
-- workflow CI/CD en `.github/workflows/deploy-worker.yml`
+- despliegue por Git integration / Workers Builds en Cloudflare
 
 ### 1. Requisitos en Cloudflare
 
@@ -249,23 +249,16 @@ Opcional (normalmente no hace falta tocarla):
 
 - `GOOGLE_CSE_BASE_URL` (default `https://www.googleapis.com/customsearch/v1`)
 
-### 3. Secrets de GitHub necesarios para CI/CD
+### 3. Integración Git en Cloudflare
 
-Configura estos secrets en el repo:
+El despliegue queda delegado a Cloudflare Workers Builds conectado al repositorio Git.
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+Configura en Cloudflare:
 
-Los secrets runtime del Worker (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SCRAPER_MANUAL_RUN_TOKEN`, `R2_PUBLIC_BASE_URL`, `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`, etc.) se pueden gestionar directamente en Cloudflare. El workflow de GitHub solo autentica el deploy y no vuelve a subir esos secrets.
+- conexión del repo/branch en `Workers & Pages`
+- variables y secrets runtime del Worker (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SCRAPER_MANUAL_RUN_TOKEN`, `R2_PUBLIC_BASE_URL`, `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`, etc.)
 
-Opcionales si prefieres sincronizar runtime secrets también desde GitHub Actions:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SCRAPER_MANUAL_RUN_TOKEN`
-- `R2_PUBLIC_BASE_URL`
-- `GOOGLE_CSE_API_KEY`
-- `GOOGLE_CSE_CX`
+No hace falta configurar secrets de despliegue en GitHub Actions si el deploy lo hace Cloudflare directamente.
 
 ### 4. Flujo CI/CD
 
