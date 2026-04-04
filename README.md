@@ -55,6 +55,7 @@ Tareas disponibles:
 - `sync-top-rated`
 - `sync-directory`
 - `sync-details-and-episodes`
+- `sync-anime-images`
 - `sync-episode-sources`
 
 Nota: ejecutar `/run-once` sin `task` intenta correr todo el scheduler en una sola invocacion; en Cloudflare puede pegar el limite de subrequests.
@@ -178,6 +179,16 @@ El mirror de imagenes a R2 es opcional.
 - Si no configuras `R2_PUBLIC_BASE_URL`, el scraper sigue funcionando y guarda la URL original de la imagen.
 - En Cloudflare Workers no necesitas `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` ni `R2_SECRET_ACCESS_KEY` si usas el binding nativo del bucket.
 
+### Banners de carrusel (Google CSE + R2)
+
+`sync-anime-images` complementa `animes.images.carouselImages` para uso de UI.
+
+- Usa Google Custom Search API (`GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_CX`) para encontrar candidatas.
+- Para banners, la persistencia es **solo** con mirror exitoso en R2 (sin fallback a URL externa).
+- Objetivo operativo: al menos 1 banner valido; intenta completar hasta 3 cuando haya disponibilidad.
+- Si el anime queda sin banners validos, marca error y aplica backoff de reintentos para evitar arrastrar errores.
+- Si hay al menos 1 banner valido, usa refresh normal cada 14 dias.
+
 ## Enriquecimiento Jikan
 
 `syncAnimeDetails` mantiene AnimeFLV como fuente base y complementa metadata desde Jikan/MyAnimeList en `anime_jikan_details`.
@@ -224,6 +235,15 @@ Solo si quieres mirror de imagenes publico:
 
 - `R2_PUBLIC_BASE_URL`
 
+Solo si quieres poblar `carouselImages` con Google CSE:
+
+- `GOOGLE_CSE_API_KEY`
+- `GOOGLE_CSE_CX`
+
+Opcional (normalmente no hace falta tocarla):
+
+- `GOOGLE_CSE_BASE_URL` (default `https://www.googleapis.com/customsearch/v1`)
+
 ### 3. Secrets de GitHub necesarios para CI/CD
 
 Configura estos secrets en el repo:
@@ -237,6 +257,11 @@ Configura estos secrets en el repo:
 Opcionales si expones imagenes desde R2:
 
 - `R2_PUBLIC_BASE_URL`
+
+Opcionales para `sync-anime-images`:
+
+- `GOOGLE_CSE_API_KEY`
+- `GOOGLE_CSE_CX`
 
 ### 4. Flujo CI/CD
 

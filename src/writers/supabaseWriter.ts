@@ -1,5 +1,6 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+	AnimeCarouselMeta,
 	AnimeDetail,
 	AnimeFeedType,
 	AnimeJikanDetail,
@@ -8,119 +9,153 @@ import type {
 	EpisodeDetail,
 	EpisodeFeedType,
 	EpisodeSourcesRecord,
-} from '../types/models'
+	SyncStateMeta,
+	SyncStateUpsertInput,
+} from "../types/models";
 
 export class SupabaseWriter {
 	constructor(private readonly supabase: SupabaseClient) {}
 
 	private formatError(error: unknown) {
-		if (error instanceof Error) return error.message
-		if (typeof error === 'string') return error
+		if (error instanceof Error) return error.message;
+		if (typeof error === "string") return error;
 
-		if (error && typeof error === 'object') {
-			const normalized = error as Record<string, unknown>
-			const parts = [normalized.message, normalized.code, normalized.details, normalized.hint]
-				.filter((value) => typeof value === 'string' && value.trim().length > 0)
-				.map((value) => String(value))
+		if (error && typeof error === "object") {
+			const normalized = error as Record<string, unknown>;
+			const parts = [
+				normalized.message,
+				normalized.code,
+				normalized.details,
+				normalized.hint,
+			]
+				.filter((value) => typeof value === "string" && value.trim().length > 0)
+				.map((value) => String(value));
 
-			if (parts.length > 0) return parts.join(' | ')
+			if (parts.length > 0) return parts.join(" | ");
 
 			try {
-				return JSON.stringify(normalized)
+				return JSON.stringify(normalized);
 			} catch {
-				return String(error)
+				return String(error);
 			}
 		}
 
-		return String(error)
+		return String(error);
 	}
 
-	private async execute<T extends { error: unknown }>(operation: PromiseLike<T>, context: string): Promise<T> {
-		const result = await operation
+	private async execute<T extends { error: unknown }>(
+		operation: PromiseLike<T>,
+		context: string,
+	): Promise<T> {
+		const result = await operation;
 		if (result.error) {
-			throw new Error(`${context}: ${this.formatError(result.error)}`)
+			throw new Error(`${context}: ${this.formatError(result.error)}`);
 		}
-		return result
+		return result;
 	}
 
-	async upsertAnimeFeedItems(feedType: AnimeFeedType, animeIds: string[], page = 1) {
-		const feedFetchedAt = new Date().toISOString()
+	async upsertAnimeFeedItems(
+		feedType: AnimeFeedType,
+		animeIds: string[],
+		page = 1,
+	) {
+		const feedFetchedAt = new Date().toISOString();
 		const payload = animeIds.map((animeId, position) => ({
 			feed_type: feedType,
 			anime_id: animeId,
 			page,
 			position,
 			feed_fetched_at: feedFetchedAt,
-		}))
+		}));
 
-		if (payload.length === 0) return
+		if (payload.length === 0) return;
 
 		await this.execute(
 			this.supabase
-				.from('anime_feed_items')
-				.upsert(payload, { onConflict: 'feed_type,page,position' }),
-			'upsert anime_feed_items'
-		)
+				.from("anime_feed_items")
+				.upsert(payload, { onConflict: "feed_type,page,position" }),
+			"upsert anime_feed_items",
+		);
 	}
 
 	async ensureAnimeRecords(records: AnimeSeedRecord[]) {
-		if (records.length === 0) return
+		if (records.length === 0) return;
 
-		const dedupedByAnimeId = new Map<string, { animeId: string; title: string; type: string; originalLink: string | null }>()
+		const dedupedByAnimeId = new Map<
+			string,
+			{
+				animeId: string;
+				title: string;
+				type: string;
+				originalLink: string | null;
+			}
+		>();
 		for (const record of records) {
-			if (!record.animeId || !record.title || dedupedByAnimeId.has(record.animeId)) continue
+			if (
+				!record.animeId ||
+				!record.title ||
+				dedupedByAnimeId.has(record.animeId)
+			)
+				continue;
 
 			dedupedByAnimeId.set(record.animeId, {
 				animeId: record.animeId,
 				title: record.title,
-				type: record.type ?? 'Anime',
+				type: record.type ?? "Anime",
 				originalLink: record.originalLink ?? null,
-			})
+			});
 		}
 
-		const deduped = Array.from(dedupedByAnimeId.values())
+		const deduped = Array.from(dedupedByAnimeId.values());
 
-		if (deduped.length === 0) return
+		if (deduped.length === 0) return;
 
-		const animeIds = deduped.map((record) => record.animeId)
+		const animeIds = deduped.map((record) => record.animeId);
 		const { data } = await this.execute(
-			this.supabase.from('animes').select('animeId').in('animeId', animeIds),
-			'select existing anime seed records'
-		)
+			this.supabase.from("animes").select("animeId").in("animeId", animeIds),
+			"select existing anime seed records",
+		);
 
-		const existingAnimeIds = new Set(((data ?? []) as Array<{ animeId: string }>).map((row) => row.animeId))
-		const missingRecords = deduped.filter((record) => !existingAnimeIds.has(record.animeId))
+		const existingAnimeIds = new Set(
+			((data ?? []) as Array<{ animeId: string }>).map((row) => row.animeId),
+		);
+		const missingRecords = deduped.filter(
+			(record) => !existingAnimeIds.has(record.animeId),
+		);
 
-		if (missingRecords.length === 0) return
+		if (missingRecords.length === 0) return;
 
 		await this.execute(
-			this.supabase.from('animes').insert(missingRecords),
-			'insert anime seed records'
-		)
+			this.supabase.from("animes").insert(missingRecords),
+			"insert anime seed records",
+		);
 	}
 
-	async upsertEpisodeFeedItems(feedType: EpisodeFeedType, episodeIds: string[]) {
-		const feedFetchedAt = new Date().toISOString()
+	async upsertEpisodeFeedItems(
+		feedType: EpisodeFeedType,
+		episodeIds: string[],
+	) {
+		const feedFetchedAt = new Date().toISOString();
 		const payload = episodeIds.map((episodeId, position) => ({
 			feed_type: feedType,
 			episode_id: episodeId,
 			position,
 			feed_fetched_at: feedFetchedAt,
-		}))
+		}));
 
-		if (payload.length === 0) return
+		if (payload.length === 0) return;
 
 		await this.execute(
 			this.supabase
-				.from('episode_feed_items')
-				.upsert(payload, { onConflict: 'feed_type,position' }),
-			'upsert episode_feed_items'
-		)
+				.from("episode_feed_items")
+				.upsert(payload, { onConflict: "feed_type,position" }),
+			"upsert episode_feed_items",
+		);
 	}
 
 	async upsertAnimeDetails(anime: AnimeDetail) {
 		await this.execute(
-			this.supabase.from('animes').upsert(
+			this.supabase.from("animes").upsert(
 				[
 					{
 						animeId: anime.animeId,
@@ -136,32 +171,32 @@ export class SupabaseWriter {
 						images: anime.images ?? null,
 					},
 				],
-				{ onConflict: 'animeId' }
+				{ onConflict: "animeId" },
 			),
-			'upsert animes'
-		)
+			"upsert animes",
+		);
 
 		if (!anime.relatedAnimes || anime.relatedAnimes.length === 0) {
-			return
+			return;
 		}
 
 		await this.execute(
-			this.supabase.from('related_animes').upsert(
+			this.supabase.from("related_animes").upsert(
 				anime.relatedAnimes.map((relatedAnime) => ({
 					anime_id: anime.animeId,
 					related_id: relatedAnime.animeId,
 					title: relatedAnime.title,
 					relation: relatedAnime.relation,
 				})),
-				{ onConflict: 'anime_id,related_id,relation' }
+				{ onConflict: "anime_id,related_id,relation" },
 			),
-			'upsert related_animes'
-		)
+			"upsert related_animes",
+		);
 	}
 
 	async upsertAnimeJikanDetail(detail: AnimeJikanDetail) {
 		await this.execute(
-			this.supabase.from('anime_jikan_details').upsert(
+			this.supabase.from("anime_jikan_details").upsert(
 				[
 					{
 						anime_id: detail.animeId,
@@ -202,17 +237,17 @@ export class SupabaseWriter {
 						jikan_expires_at: detail.jikanExpiresAt,
 					},
 				],
-				{ onConflict: 'anime_id' }
+				{ onConflict: "anime_id" },
 			),
-			'upsert anime_jikan_details'
-		)
+			"upsert anime_jikan_details",
+		);
 	}
 
 	async upsertEpisodes(episodes: EpisodeDetail[]) {
-		if (episodes.length === 0) return
+		if (episodes.length === 0) return;
 
 		await this.execute(
-			this.supabase.from('episodes').upsert(
+			this.supabase.from("episodes").upsert(
 				episodes.map((episode) => ({
 					episodeId: episode.episodeId,
 					animeId: episode.animeId,
@@ -221,15 +256,15 @@ export class SupabaseWriter {
 					originalLink: episode.originalLink ?? null,
 					image: episode.image ?? null,
 				})),
-				{ onConflict: 'episodeId' }
+				{ onConflict: "episodeId" },
 			),
-			'upsert episodes'
-		)
+			"upsert episodes",
+		);
 	}
 
 	async upsertEpisodeSources(record: EpisodeSourcesRecord) {
 		await this.execute(
-			this.supabase.from('episode_sources').upsert(
+			this.supabase.from("episode_sources").upsert(
 				[
 					{
 						episode_id: record.episodeId,
@@ -239,120 +274,264 @@ export class SupabaseWriter {
 						expires_at: record.expiresAt,
 					},
 				],
-				{ onConflict: 'episode_id' }
+				{ onConflict: "episode_id" },
 			),
-			'upsert episode_sources'
-		)
+			"upsert episode_sources",
+		);
 	}
 
-	async markSyncState(resourceType: string, resourceId: string, status: 'success' | 'error', errorMessage?: string) {
+	async markSyncState(
+		resourceType: string,
+		resourceId: string,
+		status: "success" | "error",
+		errorMessage?: string,
+	) {
 		await this.execute(
-			this.supabase.from('sync_state').upsert(
+			this.supabase.from("sync_state").upsert(
 				[
 					{
 						resource_type: resourceType,
 						resource_id: resourceId,
 						status,
-						last_success_at: status === 'success' ? new Date().toISOString() : null,
-						last_error_at: status === 'error' ? new Date().toISOString() : null,
+						last_success_at:
+							status === "success" ? new Date().toISOString() : null,
+						last_error_at: status === "error" ? new Date().toISOString() : null,
 						error_message: errorMessage ?? null,
-						error_count: status === 'error' ? 1 : 0,
+						error_count: status === "error" ? 1 : 0,
 					},
 				],
-				{ onConflict: 'resource_type,resource_id' }
+				{ onConflict: "resource_type,resource_id" },
 			),
-			'upsert sync_state'
-		)
+			"upsert sync_state",
+		);
+	}
+
+	async upsertSyncState(input: SyncStateUpsertInput) {
+		await this.execute(
+			this.supabase.from("sync_state").upsert(
+				[
+					{
+						resource_type: input.resourceType,
+						resource_id: input.resourceId,
+						status: input.status,
+						last_success_at: input.lastSuccessAt ?? null,
+						last_error_at: input.lastErrorAt ?? null,
+						error_count: input.errorCount ?? 0,
+						error_message: input.errorMessage ?? null,
+						next_run_at: input.nextRunAt ?? null,
+					},
+				],
+				{ onConflict: "resource_type,resource_id" },
+			),
+			"upsert sync_state full",
+		);
+	}
+
+	async getSyncState(
+		resourceType: string,
+		resourceId: string,
+	): Promise<SyncStateMeta | null> {
+		const { data } = await this.execute(
+			this.supabase
+				.from("sync_state")
+				.select(
+					"resource_type,resource_id,status,last_success_at,last_error_at,error_count,error_message,next_run_at",
+				)
+				.eq("resource_type", resourceType)
+				.eq("resource_id", resourceId)
+				.limit(1),
+			"select sync_state",
+		);
+
+		const item = (data ?? [])[0] as
+			| {
+					resource_type: string;
+					resource_id: string;
+					status: "pending" | "running" | "success" | "error";
+					last_success_at: string | null;
+					last_error_at: string | null;
+					error_count: number | null;
+					error_message: string | null;
+					next_run_at: string | null;
+			  }
+			| undefined;
+
+		if (!item) return null;
+
+		return {
+			resourceType: item.resource_type,
+			resourceId: item.resource_id,
+			status: item.status,
+			lastSuccessAt: item.last_success_at,
+			lastErrorAt: item.last_error_at,
+			errorCount: item.error_count ?? 0,
+			errorMessage: item.error_message,
+			nextRunAt: item.next_run_at,
+		};
+	}
+
+	async getAnimeCarouselMeta(
+		animeId: string,
+	): Promise<AnimeCarouselMeta | null> {
+		const { data } = await this.execute(
+			this.supabase
+				.from("animes")
+				.select("animeId,title,otherTitles,images,carousel_image_keys")
+				.eq("animeId", animeId)
+				.limit(1),
+			"select anime carousel meta",
+		);
+
+		const item = (data ?? [])[0] as
+			| {
+					animeId: string;
+					title: string;
+					otherTitles: string[] | null;
+					images: AnimeDetail["images"] | null;
+					carousel_image_keys: unknown;
+			  }
+			| undefined;
+
+		if (!item) return null;
+
+		const carouselImageKeys = Array.isArray(item.carousel_image_keys)
+			? item.carousel_image_keys.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+
+		return {
+			animeId: item.animeId,
+			title: item.title,
+			otherTitles: item.otherTitles ?? [],
+			images: item.images ?? null,
+			carouselImageKeys,
+		};
+	}
+
+	async updateAnimeCarouselImages(
+		animeId: string,
+		images: AnimeDetail["images"],
+		carouselImageKeys: string[],
+	) {
+		await this.execute(
+			this.supabase
+				.from("animes")
+				.update({
+					images,
+					carousel_image_keys: carouselImageKeys,
+				})
+				.eq("animeId", animeId),
+			"update anime carousel images",
+		);
 	}
 
 	async getAnimeIdsFromFeed(limit = 200) {
 		const { data } = await this.execute(
 			this.supabase
-				.from('anime_feed_items')
-				.select('anime_id')
-				.order('updated_at', { ascending: false })
+				.from("anime_feed_items")
+				.select("anime_id")
+				.order("updated_at", { ascending: false })
 				.limit(limit),
-			'select anime_feed_items'
-		)
+			"select anime_feed_items",
+		);
 
-		const items = (data ?? []) as Array<{ anime_id: string }>
-		return Array.from(new Set(items.map((item) => item.anime_id)))
+		const items = (data ?? []) as Array<{ anime_id: string }>;
+		return Array.from(new Set(items.map((item) => item.anime_id)));
 	}
 
-	async getAnimeJikanRefreshMeta(animeId: string): Promise<AnimeJikanRefreshMeta | null> {
+	async getAnimeJikanRefreshMeta(
+		animeId: string,
+	): Promise<AnimeJikanRefreshMeta | null> {
 		const { data } = await this.execute(
 			this.supabase
-				.from('anime_jikan_details')
-				.select('mal_id,jikan_expires_at')
-				.eq('anime_id', animeId)
+				.from("anime_jikan_details")
+				.select("mal_id,jikan_expires_at")
+				.eq("anime_id", animeId)
 				.limit(1),
-			'select anime_jikan_details refresh meta'
-		)
+			"select anime_jikan_details refresh meta",
+		);
 
-		const items = (data ?? []) as Array<{ mal_id: number | null; jikan_expires_at: string | null }>
-		const item = items[0]
-		if (!item) return null
+		const items = (data ?? []) as Array<{
+			mal_id: number | null;
+			jikan_expires_at: string | null;
+		}>;
+		const item = items[0];
+		if (!item) return null;
 
 		return {
 			malId: item.mal_id ?? null,
 			jikanExpiresAt: item.jikan_expires_at ?? null,
-		}
+		};
 	}
 
 	async getRecentEpisodeIds(limit = 200, daysWindow = 7) {
-		const fromDate = new Date(Date.now() - daysWindow * 24 * 60 * 60 * 1000).toISOString()
+		const fromDate = new Date(
+			Date.now() - daysWindow * 24 * 60 * 60 * 1000,
+		).toISOString();
 		const { data } = await this.execute(
 			this.supabase
-				.from('episodes')
-				.select('episodeId')
-				.gte('updated_at', fromDate)
-				.order('updated_at', { ascending: false })
+				.from("episodes")
+				.select("episodeId")
+				.gte("updated_at", fromDate)
+				.order("updated_at", { ascending: false })
 				.limit(limit),
-			'select episodes'
-		)
+			"select episodes",
+		);
 
-		const items = (data ?? []) as Array<{ episodeId: string }>
-		return Array.from(new Set(items.map((item) => item.episodeId)))
+		const items = (data ?? []) as Array<{ episodeId: string }>;
+		return Array.from(new Set(items.map((item) => item.episodeId)));
 	}
 
 	async getMaxEpisodeNumberByAnimeId(animeId: string) {
 		const { data } = await this.execute(
 			this.supabase
-				.from('episodes')
-				.select('episode')
-				.eq('animeId', animeId)
-				.order('episode', { ascending: false })
+				.from("episodes")
+				.select("episode")
+				.eq("animeId", animeId)
+				.order("episode", { ascending: false })
 				.limit(1),
-			'select max episode by anime'
-		)
+			"select max episode by anime",
+		);
 
-		const items = (data ?? []) as Array<{ episode: number | null }>
-		const maxEpisode = items[0]?.episode
-		return typeof maxEpisode === 'number' && Number.isFinite(maxEpisode) ? maxEpisode : 0
+		const items = (data ?? []) as Array<{ episode: number | null }>;
+		const maxEpisode = items[0]?.episode;
+		return typeof maxEpisode === "number" && Number.isFinite(maxEpisode)
+			? maxEpisode
+			: 0;
 	}
 
-	async getEpisodeIdsNeedingSourceRefresh(limit = 200, daysWindow = 7, now = new Date()) {
-		const episodeIds = await this.getRecentEpisodeIds(limit, daysWindow)
-		if (episodeIds.length === 0) return []
+	async getEpisodeIdsNeedingSourceRefresh(
+		limit = 200,
+		daysWindow = 7,
+		now = new Date(),
+	) {
+		const episodeIds = await this.getRecentEpisodeIds(limit, daysWindow);
+		if (episodeIds.length === 0) return [];
 
 		const { data } = await this.execute(
 			this.supabase
-				.from('episode_sources')
-				.select('episode_id,expires_at')
-				.in('episode_id', episodeIds),
-			'select episode_sources'
-		)
+				.from("episode_sources")
+				.select("episode_id,expires_at")
+				.in("episode_id", episodeIds),
+			"select episode_sources",
+		);
 
-		const sourceRows = (data ?? []) as Array<{ episode_id: string; expires_at: string | null }>
-		const expiryByEpisodeId = new Map(sourceRows.map((row) => [row.episode_id, row.expires_at]))
-		const nowMs = now.getTime()
+		const sourceRows = (data ?? []) as Array<{
+			episode_id: string;
+			expires_at: string | null;
+		}>;
+		const expiryByEpisodeId = new Map(
+			sourceRows.map((row) => [row.episode_id, row.expires_at]),
+		);
+		const nowMs = now.getTime();
 
 		return episodeIds.filter((episodeId) => {
-			const expiresAt = expiryByEpisodeId.get(episodeId)
-			if (!expiresAt) return true
+			const expiresAt = expiryByEpisodeId.get(episodeId);
+			if (!expiresAt) return true;
 
-			const expiresAtMs = new Date(expiresAt).getTime()
-			return !Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs
-		})
+			const expiresAtMs = new Date(expiresAt).getTime();
+			return !Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs;
+		});
 	}
 }

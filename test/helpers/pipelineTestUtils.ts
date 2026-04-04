@@ -1,5 +1,5 @@
-import type { AppConfig } from '../../src/config'
-import type { PipelineContext } from '../../src/pipelines/context'
+import type { AppConfig } from "../../src/config";
+import type { PipelineContext } from "../../src/pipelines/context";
 import type {
 	AnimeDetail,
 	AnimeJikanDetail,
@@ -7,55 +7,59 @@ import type {
 	AnimeSeedRecord,
 	EpisodeDetail,
 	EpisodeSourcesRecord,
-} from '../../src/types/models'
+} from "../../src/types/models";
 
 export type SyncStateCall = {
-	resourceType: string
-	resourceId: string
-	status: 'success' | 'error'
-	errorMessage?: string
-}
+	resourceType: string;
+	resourceId: string;
+	status: "success" | "error";
+	errorMessage?: string;
+};
 
 export type AnimeFeedCall = {
-	feedType: 'directory' | 'latest' | 'broadcast' | 'rating'
-	animeIds: string[]
-	page?: number
-}
+	feedType: "directory" | "latest" | "broadcast" | "rating";
+	animeIds: string[];
+	page?: number;
+};
 
 export type EpisodeFeedCall = {
-	feedType: 'latest'
-	episodeIds: string[]
-}
+	feedType: "latest";
+	episodeIds: string[];
+};
 
 export type LoggerWarnCall = {
-	message: string
-	meta?: unknown
-}
+	message: string;
+	meta?: unknown;
+};
 
 export const createTestConfig = (): AppConfig => ({
-	supabaseUrl: '',
-	supabaseServiceRoleKey: '',
-	animeFlvBaseUrl: 'https://example.test',
-	jikanBaseUrl: 'https://api.jikan.test/v4',
+	supabaseUrl: "",
+	supabaseServiceRoleKey: "",
+	animeFlvBaseUrl: "https://example.test",
+	jikanBaseUrl: "https://api.jikan.test/v4",
 	requestTimeoutMs: 1000,
 	requestRetryAttempts: 1,
 	maxConcurrency: 2,
-	logLevel: 'info',
+	logLevel: "info",
 	runOnce: true,
-	manualRunToken: '',
-	r2AccountId: '',
-	r2AccessKeyId: '',
-	r2SecretAccessKey: '',
-	r2Bucket: '',
-	r2PublicBaseUrl: '',
-	r2BucketBinding: '',
-})
+	manualRunToken: "",
+	r2AccountId: "",
+	r2AccessKeyId: "",
+	r2SecretAccessKey: "",
+	r2Bucket: "",
+	r2PublicBaseUrl: "",
+	r2BucketBinding: "",
+	googleCseApiKey: "",
+	googleCseCx: "",
+	googleCseBaseUrl: "https://www.googleapis.com/customsearch/v1",
+});
 
 export const createPipelineContextMock = (overrides?: {
-	config?: Partial<AppConfig>
-	fetchHtml?: PipelineContext['fetchHtml']
-	r2Writer?: PipelineContext['r2Writer']
-	jikanClient?: PipelineContext['jikanClient']
+	config?: Partial<AppConfig>;
+	fetchHtml?: PipelineContext["fetchHtml"];
+	r2Writer?: PipelineContext["r2Writer"];
+	jikanClient?: PipelineContext["jikanClient"];
+	googleSearchClient?: PipelineContext["googleSearchClient"];
 }) => {
 	const calls = {
 		animeFeedItems: [] as AnimeFeedCall[],
@@ -67,58 +71,70 @@ export const createPipelineContextMock = (overrides?: {
 		episodeSources: [] as EpisodeSourcesRecord[],
 		syncStates: [] as SyncStateCall[],
 		warns: [] as LoggerWarnCall[],
-	}
+	};
 
 	const writer = {
-		upsertAnimeFeedItems: async (feedType: AnimeFeedCall['feedType'], animeIds: string[], page?: number) => {
-			calls.animeFeedItems.push({ feedType, animeIds, page })
+		upsertAnimeFeedItems: async (
+			feedType: AnimeFeedCall["feedType"],
+			animeIds: string[],
+			page?: number,
+		) => {
+			calls.animeFeedItems.push({ feedType, animeIds, page });
 		},
-		upsertEpisodeFeedItems: async (feedType: EpisodeFeedCall['feedType'], episodeIds: string[]) => {
-			calls.episodeFeedItems.push({ feedType, episodeIds })
+		upsertEpisodeFeedItems: async (
+			feedType: EpisodeFeedCall["feedType"],
+			episodeIds: string[],
+		) => {
+			calls.episodeFeedItems.push({ feedType, episodeIds });
 		},
 		upsertAnimeDetails: async (detail: AnimeDetail) => {
-			calls.animeDetails.push(detail)
+			calls.animeDetails.push(detail);
 		},
 		upsertAnimeJikanDetail: async (detail: AnimeJikanDetail) => {
-			calls.animeJikanDetails.push(detail)
+			calls.animeJikanDetails.push(detail);
 		},
 		ensureAnimeRecords: async (records: AnimeSeedRecord[]) => {
-			calls.animeSeedRecords.push(records)
+			calls.animeSeedRecords.push(records);
 		},
 		upsertEpisodes: async (episodes: EpisodeDetail[]) => {
-			calls.episodes.push(episodes)
+			calls.episodes.push(episodes);
 		},
 		upsertEpisodeSources: async (record: EpisodeSourcesRecord) => {
-			calls.episodeSources.push(record)
+			calls.episodeSources.push(record);
 		},
 		markSyncState: async (
 			resourceType: string,
 			resourceId: string,
-			status: 'success' | 'error',
-			errorMessage?: string
+			status: "success" | "error",
+			errorMessage?: string,
 		) => {
-			calls.syncStates.push({ resourceType, resourceId, status, errorMessage })
+			calls.syncStates.push({ resourceType, resourceId, status, errorMessage });
 		},
+		upsertSyncState: async () => {},
+		getSyncState: async () => null,
+		getAnimeCarouselMeta: async () => null,
+		updateAnimeCarouselImages: async () => {},
 		getAnimeIdsFromFeed: async () => [],
-		getAnimeJikanRefreshMeta: async (): Promise<AnimeJikanRefreshMeta | null> => null,
+		getAnimeJikanRefreshMeta: async (): Promise<AnimeJikanRefreshMeta | null> =>
+			null,
 		getRecentEpisodeIds: async () => [],
 		getMaxEpisodeNumberByAnimeId: async () => 0,
 		getEpisodeIdsNeedingSourceRefresh: async () => [],
-	}
+	};
 
 	const logger = {
 		debug: () => {},
 		info: () => {},
 		warn: (message: string, meta?: unknown) => {
-			calls.warns.push({ message, meta })
+			calls.warns.push({ message, meta });
 		},
 		error: () => {},
-	}
+	};
 
 	const ctx: PipelineContext = {
 		config: { ...createTestConfig(), ...overrides?.config },
-		writer: writer as unknown as PipelineContext['writer'],
-		logger: logger as unknown as PipelineContext['logger'],
+		writer: writer as unknown as PipelineContext["writer"],
+		logger: logger as unknown as PipelineContext["logger"],
 		r2Writer: overrides?.r2Writer,
 		jikanClient:
 			overrides?.jikanClient ??
@@ -126,9 +142,14 @@ export const createPipelineContextMock = (overrides?: {
 				searchAnime: async () => [],
 				getAnimeFull: async () => null,
 				getAnimeVideos: async () => null,
-			} as unknown as PipelineContext['jikanClient']),
+			} as unknown as PipelineContext["jikanClient"]),
+		googleSearchClient:
+			overrides?.googleSearchClient ??
+			({
+				searchImageBanners: async () => [],
+			} as unknown as PipelineContext["googleSearchClient"]),
 		fetchHtml: overrides?.fetchHtml ?? (async () => null),
-	}
+	};
 
-	return { ctx, calls }
-}
+	return { ctx, calls };
+};
