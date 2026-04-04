@@ -59,6 +59,7 @@ export const createConfig = (overrides?: Partial<AppConfig>): AppConfig => ({
 	r2Bucket: "",
 	r2PublicBaseUrl: "",
 	r2BucketBinding: "",
+	scraperCacheBinding: "SCRAPER_CACHE",
 	googleCseApiKey: "",
 	googleCseCx: "",
 	googleCseBaseUrl: "https://www.googleapis.com/customsearch/v1",
@@ -93,7 +94,8 @@ export const createWriterSpy = (): WriterSpy => {
 		updatedCarousels,
 		animeCarouselMetaById,
 		syncStateMetaByResource,
-		writer: {
+		writer: (() => {
+			const writer: Record<string, unknown> = {
 			upsertAnimeFeedItems: async (
 				feedType: string,
 				animeIds: string[],
@@ -122,6 +124,9 @@ export const createWriterSpy = (): WriterSpy => {
 			upsertEpisodeSources: async (record: EpisodeSourcesRecord) => {
 				episodeSources.push(record);
 			},
+			upsertEpisodeSourcesBatch: async (records: EpisodeSourcesRecord[]) => {
+				episodeSources.push(...records);
+			},
 			markSyncState: async (
 				resourceType: string,
 				resourceId: string,
@@ -132,6 +137,14 @@ export const createWriterSpy = (): WriterSpy => {
 			},
 			upsertSyncState: async (input: SyncStateUpsertInput) => {
 				fullSyncStates.push(input);
+				if (input.status === "success" || input.status === "error") {
+					syncStates.push({
+						resourceType: input.resourceType,
+						resourceId: input.resourceId,
+						status: input.status,
+						errorMessage: input.errorMessage ?? undefined,
+					});
+				}
 				syncStateMetaByResource.set(
 					`${input.resourceType}:${input.resourceId}`,
 					{
@@ -146,6 +159,32 @@ export const createWriterSpy = (): WriterSpy => {
 					},
 				);
 			},
+			upsertSyncStates: async (inputs: SyncStateUpsertInput[]) => {
+				for (const input of inputs) {
+					fullSyncStates.push(input);
+					if (input.status === "success" || input.status === "error") {
+						syncStates.push({
+							resourceType: input.resourceType,
+							resourceId: input.resourceId,
+							status: input.status,
+							errorMessage: input.errorMessage ?? undefined,
+						});
+					}
+					syncStateMetaByResource.set(
+						`${input.resourceType}:${input.resourceId}`,
+						{
+							resourceType: input.resourceType,
+							resourceId: input.resourceId,
+							status: input.status,
+							lastSuccessAt: input.lastSuccessAt ?? null,
+							lastErrorAt: input.lastErrorAt ?? null,
+							errorCount: input.errorCount ?? 0,
+							errorMessage: input.errorMessage ?? null,
+							nextRunAt: input.nextRunAt ?? null,
+						},
+					);
+				}
+			},
 			getSyncState: async (
 				resourceType: string,
 				resourceId: string,
@@ -154,11 +193,31 @@ export const createWriterSpy = (): WriterSpy => {
 					syncStateMetaByResource.get(`${resourceType}:${resourceId}`) ?? null
 				);
 			},
+			getSyncStates: async (
+				resourceType: string,
+				resourceIds: string[],
+			): Promise<Map<string, SyncStateMeta>> =>
+				new Map(
+					resourceIds
+						.map((resourceId) => [
+							resourceId,
+							syncStateMetaByResource.get(`${resourceType}:${resourceId}`) ?? null,
+						])
+						.filter((entry): entry is [string, SyncStateMeta] => entry[1] !== null),
+				),
 			getAnimeCarouselMeta: async (
 				animeId: string,
 			): Promise<AnimeCarouselMeta | null> => {
 				return animeCarouselMetaById.get(animeId) ?? null;
 			},
+			getAnimeCarouselMetas: async (
+				animeIds: string[],
+			): Promise<Map<string, AnimeCarouselMeta>> =>
+				new Map(
+					animeIds
+						.map((animeId) => [animeId, animeCarouselMetaById.get(animeId) ?? null])
+						.filter((entry): entry is [string, AnimeCarouselMeta] => entry[1] !== null),
+				),
 			updateAnimeCarouselImages: async (
 				animeId: string,
 				images: AnimeDetail["images"],
@@ -169,10 +228,43 @@ export const createWriterSpy = (): WriterSpy => {
 			getAnimeIdsFromFeed: async () => [],
 			getAnimeJikanRefreshMeta:
 				async (): Promise<AnimeJikanRefreshMeta | null> => null,
+			getAnimeJikanRefreshMetas: async (
+				animeIds: string[],
+			): Promise<Map<string, AnimeJikanRefreshMeta>> =>
+				new Map(
+					(
+						await Promise.all(
+							animeIds.map(async (animeId) => [
+								animeId,
+								await (writer.getAnimeJikanRefreshMeta as (
+									animeId: string,
+								) => Promise<AnimeJikanRefreshMeta | null>)(animeId),
+							] as const),
+						)
+					).filter(
+						(entry): entry is [string, AnimeJikanRefreshMeta] => entry[1] !== null,
+					),
+				),
 			getRecentEpisodeIds: async () => [],
 			getMaxEpisodeNumberByAnimeId: async () => 0,
+			getMaxEpisodeNumbersByAnimeIds: async (
+				animeIds: string[],
+			): Promise<Map<string, number>> =>
+				new Map(
+					await Promise.all(
+						animeIds.map(async (animeId) => [
+							animeId,
+							await (writer.getMaxEpisodeNumberByAnimeId as (
+								animeId: string,
+							) => Promise<number>)(animeId),
+						] as const),
+					),
+				),
 			getEpisodeIdsNeedingSourceRefresh: async () => [],
-		} as unknown as PipelineContext["writer"],
+		};
+
+		return writer as unknown as PipelineContext["writer"];
+		})(),
 	};
 };
 
@@ -224,6 +316,10 @@ export const createPipelineContext = (
 			({
 				searchImageBanners: async () => [],
 			} as unknown as PipelineContext["googleSearchClient"]),
+		jikanMatchLoader: {
+			get: async () => null,
+			set: async () => {},
+		} as unknown as PipelineContext["jikanMatchLoader"],
 		fetchHtml,
 	};
 };

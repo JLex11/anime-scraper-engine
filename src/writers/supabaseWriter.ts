@@ -110,24 +110,11 @@ export class SupabaseWriter {
 
 		if (deduped.length === 0) return;
 
-		const animeIds = deduped.map((record) => record.animeId);
-		const { data } = await this.execute(
-			this.supabase.from("animes").select("animeId").in("animeId", animeIds),
-			"select existing anime seed records",
-		);
-
-		const existingAnimeIds = new Set(
-			((data ?? []) as Array<{ animeId: string }>).map((row) => row.animeId),
-		);
-		const missingRecords = deduped.filter(
-			(record) => !existingAnimeIds.has(record.animeId),
-		);
-
-		if (missingRecords.length === 0) return;
-
 		await this.execute(
-			this.supabase.from("animes").insert(missingRecords),
-			"insert anime seed records",
+			this.supabase
+				.from("animes")
+				.upsert(deduped, { onConflict: "animeId", ignoreDuplicates: true }),
+			"upsert anime seed records",
 		);
 	}
 
@@ -263,17 +250,21 @@ export class SupabaseWriter {
 	}
 
 	async upsertEpisodeSources(record: EpisodeSourcesRecord) {
+		await this.upsertEpisodeSourcesBatch([record]);
+	}
+
+	async upsertEpisodeSourcesBatch(records: EpisodeSourcesRecord[]) {
+		if (records.length === 0) return;
+
 		await this.execute(
 			this.supabase.from("episode_sources").upsert(
-				[
-					{
-						episode_id: record.episodeId,
-						episode: record.episode,
-						videos: record.videos,
-						scraped_at: record.scrapedAt,
-						expires_at: record.expiresAt,
-					},
-				],
+				records.map((record) => ({
+					episode_id: record.episodeId,
+					episode: record.episode,
+					videos: record.videos,
+					scraped_at: record.scrapedAt,
+					expires_at: record.expiresAt,
+				})),
 				{ onConflict: "episode_id" },
 			),
 			"upsert episode_sources",
@@ -307,20 +298,24 @@ export class SupabaseWriter {
 	}
 
 	async upsertSyncState(input: SyncStateUpsertInput) {
+		await this.upsertSyncStates([input]);
+	}
+
+	async upsertSyncStates(inputs: SyncStateUpsertInput[]) {
+		if (inputs.length === 0) return;
+
 		await this.execute(
 			this.supabase.from("sync_state").upsert(
-				[
-					{
-						resource_type: input.resourceType,
-						resource_id: input.resourceId,
-						status: input.status,
-						last_success_at: input.lastSuccessAt ?? null,
-						last_error_at: input.lastErrorAt ?? null,
-						error_count: input.errorCount ?? 0,
-						error_message: input.errorMessage ?? null,
-						next_run_at: input.nextRunAt ?? null,
-					},
-				],
+				inputs.map((input) => ({
+					resource_type: input.resourceType,
+					resource_id: input.resourceId,
+					status: input.status,
+					last_success_at: input.lastSuccessAt ?? null,
+					last_error_at: input.lastErrorAt ?? null,
+					error_count: input.errorCount ?? 0,
+					error_message: input.errorMessage ?? null,
+					next_run_at: input.nextRunAt ?? null,
+				})),
 				{ onConflict: "resource_type,resource_id" },
 			),
 			"upsert sync_state full",
@@ -331,6 +326,17 @@ export class SupabaseWriter {
 		resourceType: string,
 		resourceId: string,
 	): Promise<SyncStateMeta | null> {
+		const results = await this.getSyncStates(resourceType, [resourceId]);
+		return results.get(resourceId) ?? null;
+	}
+
+	async getSyncStates(
+		resourceType: string,
+		resourceIds: string[],
+	): Promise<Map<string, SyncStateMeta>> {
+		const uniqueResourceIds = Array.from(new Set(resourceIds)).filter(Boolean);
+		if (uniqueResourceIds.length === 0) return new Map();
+
 		const { data } = await this.execute(
 			this.supabase
 				.from("sync_state")
@@ -338,75 +344,85 @@ export class SupabaseWriter {
 					"resource_type,resource_id,status,last_success_at,last_error_at,error_count,error_message,next_run_at",
 				)
 				.eq("resource_type", resourceType)
-				.eq("resource_id", resourceId)
-				.limit(1),
+				.in("resource_id", uniqueResourceIds),
 			"select sync_state",
 		);
+		const items = (data ?? []) as Array<{
+			resource_type: string;
+			resource_id: string;
+			status: "pending" | "running" | "success" | "error";
+			last_success_at: string | null;
+			last_error_at: string | null;
+			error_count: number | null;
+			error_message: string | null;
+			next_run_at: string | null;
+		}>;
 
-		const item = (data ?? [])[0] as
-			| {
-					resource_type: string;
-					resource_id: string;
-					status: "pending" | "running" | "success" | "error";
-					last_success_at: string | null;
-					last_error_at: string | null;
-					error_count: number | null;
-					error_message: string | null;
-					next_run_at: string | null;
-			  }
-			| undefined;
-
-		if (!item) return null;
-
-		return {
-			resourceType: item.resource_type,
-			resourceId: item.resource_id,
-			status: item.status,
-			lastSuccessAt: item.last_success_at,
-			lastErrorAt: item.last_error_at,
-			errorCount: item.error_count ?? 0,
-			errorMessage: item.error_message,
-			nextRunAt: item.next_run_at,
-		};
+		return new Map(
+			items.map((item) => [
+				item.resource_id,
+				{
+					resourceType: item.resource_type,
+					resourceId: item.resource_id,
+					status: item.status,
+					lastSuccessAt: item.last_success_at,
+					lastErrorAt: item.last_error_at,
+					errorCount: item.error_count ?? 0,
+					errorMessage: item.error_message,
+					nextRunAt: item.next_run_at,
+				} satisfies SyncStateMeta,
+			]),
+		);
 	}
 
 	async getAnimeCarouselMeta(
 		animeId: string,
 	): Promise<AnimeCarouselMeta | null> {
+		const results = await this.getAnimeCarouselMetas([animeId]);
+		return results.get(animeId) ?? null;
+	}
+
+	async getAnimeCarouselMetas(
+		animeIds: string[],
+	): Promise<Map<string, AnimeCarouselMeta>> {
+		const uniqueAnimeIds = Array.from(new Set(animeIds)).filter(Boolean);
+		if (uniqueAnimeIds.length === 0) return new Map();
+
 		const { data } = await this.execute(
 			this.supabase
 				.from("animes")
 				.select("animeId,title,otherTitles,images,carousel_image_keys")
-				.eq("animeId", animeId)
-				.limit(1),
+				.in("animeId", uniqueAnimeIds),
 			"select anime carousel meta",
 		);
+		const items = (data ?? []) as Array<{
+			animeId: string;
+			title: string;
+			otherTitles: string[] | null;
+			images: AnimeDetail["images"] | null;
+			carousel_image_keys: unknown;
+		}>;
 
-		const item = (data ?? [])[0] as
-			| {
-					animeId: string;
-					title: string;
-					otherTitles: string[] | null;
-					images: AnimeDetail["images"] | null;
-					carousel_image_keys: unknown;
-			  }
-			| undefined;
+		return new Map(
+			items.map((item) => {
+				const carouselImageKeys = Array.isArray(item.carousel_image_keys)
+					? item.carousel_image_keys.filter(
+							(value): value is string => typeof value === "string",
+						)
+					: [];
 
-		if (!item) return null;
-
-		const carouselImageKeys = Array.isArray(item.carousel_image_keys)
-			? item.carousel_image_keys.filter(
-					(value): value is string => typeof value === "string",
-				)
-			: [];
-
-		return {
-			animeId: item.animeId,
-			title: item.title,
-			otherTitles: item.otherTitles ?? [],
-			images: item.images ?? null,
-			carouselImageKeys,
-		};
+				return [
+					item.animeId,
+					{
+						animeId: item.animeId,
+						title: item.title,
+						otherTitles: item.otherTitles ?? [],
+						images: item.images ?? null,
+						carouselImageKeys,
+					} satisfies AnimeCarouselMeta,
+				];
+			}),
+		);
 	}
 
 	async updateAnimeCarouselImages(
@@ -465,6 +481,36 @@ export class SupabaseWriter {
 		};
 	}
 
+	async getAnimeJikanRefreshMetas(
+		animeIds: string[],
+	): Promise<Map<string, AnimeJikanRefreshMeta>> {
+		const uniqueAnimeIds = Array.from(new Set(animeIds)).filter(Boolean);
+		if (uniqueAnimeIds.length === 0) return new Map();
+
+		const { data } = await this.execute(
+			this.supabase
+				.from("anime_jikan_details")
+				.select("anime_id,mal_id,jikan_expires_at")
+				.in("anime_id", uniqueAnimeIds),
+			"select anime_jikan_details refresh meta",
+		);
+		const items = (data ?? []) as Array<{
+			anime_id: string;
+			mal_id: number | null;
+			jikan_expires_at: string | null;
+		}>;
+
+		return new Map(
+			items.map((item) => [
+				item.anime_id,
+				{
+					malId: item.mal_id ?? null,
+					jikanExpiresAt: item.jikan_expires_at ?? null,
+				} satisfies AnimeJikanRefreshMeta,
+			]),
+		);
+	}
+
 	async getRecentEpisodeIds(limit = 200, daysWindow = 7) {
 		const fromDate = new Date(
 			Date.now() - daysWindow * 24 * 60 * 60 * 1000,
@@ -499,6 +545,44 @@ export class SupabaseWriter {
 		return typeof maxEpisode === "number" && Number.isFinite(maxEpisode)
 			? maxEpisode
 			: 0;
+	}
+
+	async getMaxEpisodeNumbersByAnimeIds(
+		animeIds: string[],
+	): Promise<Map<string, number>> {
+		const uniqueAnimeIds = Array.from(new Set(animeIds)).filter(Boolean);
+		if (uniqueAnimeIds.length === 0) return new Map();
+
+		const { data } = await this.execute(
+			this.supabase
+				.from("episodes")
+				.select("animeId,episode")
+				.in("animeId", uniqueAnimeIds),
+			"select max episode by anime",
+		);
+		const items = (data ?? []) as Array<{
+			animeId: string;
+			episode: number | null;
+		}>;
+		const result = new Map<string, number>();
+
+		for (const animeId of uniqueAnimeIds) {
+			result.set(animeId, 0);
+		}
+
+		for (const item of items) {
+			if (!result.has(item.animeId)) continue;
+			const episode =
+				typeof item.episode === "number" && Number.isFinite(item.episode)
+					? item.episode
+					: 0;
+			const current = result.get(item.animeId) ?? 0;
+			if (episode > current) {
+				result.set(item.animeId, episode);
+			}
+		}
+
+		return result;
 	}
 
 	async getEpisodeIdsNeedingSourceRefresh(

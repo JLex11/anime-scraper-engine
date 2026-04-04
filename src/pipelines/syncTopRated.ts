@@ -2,12 +2,13 @@ import { extractAnimeIds } from '../extractors/extractIds'
 import { buildAnimeSeed } from '../utils/animeSeed'
 import { syncAnimeDetails } from './syncAnimeDetails'
 import type { PipelineContext } from './context'
+import { loadTopRatedPage } from './pageAccess'
 
 const FEED_LIMIT = 40
 const DETAIL_WARM_LIMIT = 3
 
 export const syncTopRated = async (ctx: PipelineContext) => {
-	const html = await ctx.fetchHtml('/browse?status=1&order=rating')
+	const html = await loadTopRatedPage(ctx)
 	if (!html) {
 		ctx.logger.warn('syncTopRated: rating page unavailable')
 		await ctx.writer.markSyncState('feed', 'rating_animes', 'error', 'Rating page unavailable')

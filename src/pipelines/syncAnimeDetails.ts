@@ -1,18 +1,60 @@
-import type { JikanAnimeFull, JikanAnimeVideos } from '../clients/jikanClient'
-import { extractAnimeDetail } from '../extractors/extractAnimeDetail'
-import { createConcurrencyLimiter, runWithConcurrency } from '../utils/concurrency'
-import { createJikanSearchQueries, matchJikanAnime } from '../utils/jikanMatcher'
-import type { AnimeDetail, AnimeJikanDetail } from '../types/models'
-import type { PipelineContext } from './context'
+import type { JikanAnimeFull, JikanAnimeVideos } from "../clients/jikanClient";
+import { extractAnimeDetail } from "../extractors/extractAnimeDetail";
+import type {
+	AnimeDetail,
+	AnimeJikanDetail,
+	AnimeJikanRefreshMeta,
+	CachedJikanMatchMeta,
+	SyncStateUpsertInput,
+} from "../types/models";
+import {
+	createConcurrencyLimiter,
+	runWithConcurrency,
+} from "../utils/concurrency";
+import {
+	createJikanSearchQueries,
+	matchJikanAnime,
+} from "../utils/jikanMatcher";
+import type { PipelineContext } from "./context";
+import { loadAnimePage } from "./pageAccess";
 
-const JIKAN_TTL_MS = 7 * 24 * 60 * 60 * 1000
-const JIKAN_CONCURRENCY = 2
+const JIKAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const JIKAN_CONCURRENCY = 2;
 
 const isFreshJikanMeta = (expiresAt: string | null | undefined, now: Date) => {
-	if (!expiresAt) return false
-	const expiresAtMs = new Date(expiresAt).getTime()
-	return Number.isFinite(expiresAtMs) && expiresAtMs > now.getTime()
-}
+	if (!expiresAt) return false;
+	const expiresAtMs = new Date(expiresAt).getTime();
+	return Number.isFinite(expiresAtMs) && expiresAtMs > now.getTime();
+};
+
+const successState = (
+	resourceType: string,
+	resourceId: string,
+	now = new Date(),
+): SyncStateUpsertInput => ({
+	resourceType,
+	resourceId,
+	status: "success",
+	lastSuccessAt: now.toISOString(),
+	lastErrorAt: null,
+	errorCount: 0,
+	errorMessage: null,
+});
+
+const errorState = (
+	resourceType: string,
+	resourceId: string,
+	message: string,
+	now = new Date(),
+): SyncStateUpsertInput => ({
+	resourceType,
+	resourceId,
+	status: "error",
+	lastSuccessAt: null,
+	lastErrorAt: now.toISOString(),
+	errorCount: 1,
+	errorMessage: message,
+});
 
 const mapJikanDetail = (
 	animeId: string,
@@ -21,7 +63,7 @@ const mapJikanDetail = (
 	matchScore: number,
 	full: JikanAnimeFull,
 	videos: JikanAnimeVideos,
-	now = new Date()
+	now = new Date(),
 ): AnimeJikanDetail => ({
 	animeId,
 	malId: full.mal_id,
@@ -59,120 +101,229 @@ const mapJikanDetail = (
 	relations: full.relations ?? [],
 	jikanFetchedAt: now.toISOString(),
 	jikanExpiresAt: new Date(now.getTime() + JIKAN_TTL_MS).toISOString(),
-})
+});
 
 const getLookupTitles = (detail: AnimeDetail) =>
-	Array.from(new Set([detail.title, ...(detail.otherTitles ?? [])].map((value) => value.trim()).filter(Boolean)))
+	Array.from(
+		new Set(
+			[detail.title, ...(detail.otherTitles ?? [])]
+				.map((value) => value.trim())
+				.filter(Boolean),
+		),
+	);
 
-const syncJikanEnrichment = async (ctx: PipelineContext, detail: AnimeDetail) => {
+const fetchJikanPayload = async (
+	ctx: PipelineContext,
+	malId: number,
+) => {
+	const [full, videos] = await Promise.all([
+		ctx.jikanClient.getAnimeFull(malId),
+		ctx.jikanClient.getAnimeVideos(malId),
+	]);
+	return { full, videos };
+};
+
+const syncJikanEnrichment = async (
+	ctx: PipelineContext,
+	detail: AnimeDetail,
+	refreshMeta: AnimeJikanRefreshMeta | null,
+): Promise<SyncStateUpsertInput> => {
+	const now = new Date();
+
 	try {
-		const now = new Date()
-		const refreshMeta = await ctx.writer.getAnimeJikanRefreshMeta(detail.animeId)
-
 		if (isFreshJikanMeta(refreshMeta?.jikanExpiresAt, now)) {
-			await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'success')
-			return
+			return successState("anime_jikan_detail", detail.animeId, now);
 		}
 
-		let full: JikanAnimeFull | null = null
-		let videos: JikanAnimeVideos | null = null
-		let matchedTitle = detail.title
-		let matchScore = 1
+		let full: JikanAnimeFull | null = null;
+		let videos: JikanAnimeVideos | null = null;
+		let matchedTitle = detail.title;
+		let matchedQuery = detail.title;
+		let matchScore = 1;
 
 		if (refreshMeta?.malId) {
-			full = await ctx.jikanClient.getAnimeFull(refreshMeta.malId)
-			videos = await ctx.jikanClient.getAnimeVideos(refreshMeta.malId)
-			matchedTitle = full?.title ?? detail.title
+			({ full, videos } = await fetchJikanPayload(ctx, refreshMeta.malId));
+			matchedTitle = full?.title ?? detail.title;
 		} else {
-			let match = null
-			let searchResults = [] as Awaited<ReturnType<typeof ctx.jikanClient.searchAnime>>
-			const lookupTitles = getLookupTitles(detail)
-			const attemptedSearches: Array<{ lookupTitle: string; query: string; resultCount: number }> = []
+			const cachedMatch = await ctx.jikanMatchLoader?.get(detail.animeId);
+			if (cachedMatch?.malId) {
+				({ full, videos } = await fetchJikanPayload(ctx, cachedMatch.malId));
+				matchedQuery = cachedMatch.matchedQuery;
+				matchedTitle = cachedMatch.matchedTitle;
+				matchScore = cachedMatch.matchScore;
+			} else {
+				let match = null as ReturnType<typeof matchJikanAnime> | null;
+				let searchResults = [] as Awaited<
+					ReturnType<typeof ctx.jikanClient.searchAnime>
+				>;
+				const lookupTitles = getLookupTitles(detail);
+				const attemptedSearches: Array<{
+					lookupTitle: string;
+					query: string;
+					resultCount: number;
+				}> = [];
 
-			for (const lookupTitle of lookupTitles) {
-				for (const query of createJikanSearchQueries(lookupTitle)) {
-					searchResults = await ctx.jikanClient.searchAnime(query, 10)
-					attemptedSearches.push({
-						lookupTitle,
-						query,
-						resultCount: searchResults.length,
-					})
-					match = matchJikanAnime(lookupTitle, detail.type, searchResults)
-					if (match) break
+				for (const lookupTitle of lookupTitles) {
+					for (const query of createJikanSearchQueries(lookupTitle)) {
+						searchResults = await ctx.jikanClient.searchAnime(query, 10);
+						attemptedSearches.push({
+							lookupTitle,
+							query,
+							resultCount: searchResults.length,
+						});
+						match = matchJikanAnime(lookupTitle, detail.type, searchResults);
+						if (match) {
+							matchedQuery = query;
+							matchedTitle = match.matchedTitle;
+							matchScore = match.score;
+							break;
+						}
+					}
+					if (match) break;
 				}
-				if (match) break
-			}
 
-			if (!match) {
-				ctx.logger.warn('syncAnimeDetails: no confident Jikan match', {
+				if (!match) {
+					ctx.logger.warn("syncAnimeDetails: no confident Jikan match", {
+						animeId: detail.animeId,
+						title: detail.title,
+						otherTitles: detail.otherTitles ?? [],
+						type: detail.type ?? null,
+						resultCount: searchResults.length,
+						attemptedSearches,
+					});
+					return errorState(
+						"anime_jikan_detail",
+						detail.animeId,
+						"No confident Jikan match",
+						now,
+					);
+				}
+
+				const cachedMatchMeta: CachedJikanMatchMeta = {
 					animeId: detail.animeId,
-					title: detail.title,
-					otherTitles: detail.otherTitles ?? [],
-					type: detail.type ?? null,
-					resultCount: searchResults.length,
-					attemptedSearches,
-				})
-				await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'error', 'No confident Jikan match')
-				return
+					malId: match.result.mal_id,
+					matchedQuery,
+					matchedTitle,
+					matchScore,
+					cachedAt: now.toISOString(),
+				};
+				await ctx.jikanMatchLoader?.set(cachedMatchMeta);
+				({ full, videos } = await fetchJikanPayload(ctx, match.result.mal_id));
 			}
-
-			full = await ctx.jikanClient.getAnimeFull(match.result.mal_id)
-			videos = await ctx.jikanClient.getAnimeVideos(match.result.mal_id)
-			matchedTitle = match.matchedTitle
-			matchScore = match.score
 		}
 
 		if (!full || !videos) {
-			await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'error', 'Jikan detail unavailable')
-			return
+			return errorState(
+				"anime_jikan_detail",
+				detail.animeId,
+				"Jikan detail unavailable",
+				now,
+			);
 		}
 
-		const jikanDetail = mapJikanDetail(detail.animeId, detail.title, matchedTitle, matchScore, full, videos, now)
-		await ctx.writer.upsertAnimeJikanDetail(jikanDetail)
-		await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'success')
+		await ctx.writer.upsertAnimeJikanDetail(
+			mapJikanDetail(
+				detail.animeId,
+				matchedQuery,
+				matchedTitle,
+				matchScore,
+				full,
+				videos,
+				now,
+			),
+		);
+
+		return successState("anime_jikan_detail", detail.animeId, now);
 	} catch (error) {
-		await ctx.writer.markSyncState('anime_jikan_detail', detail.animeId, 'error', String(error))
+		return errorState(
+			"anime_jikan_detail",
+			detail.animeId,
+			String(error),
+			now,
+		);
 	}
-}
+};
 
-export const syncAnimeDetails = async (ctx: PipelineContext, animeIds: string[]) => {
-	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean)
-	if (uniqueIds.length === 0) return
+export const syncAnimeDetails = async (
+	ctx: PipelineContext,
+	animeIds: string[],
+) => {
+	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean);
+	if (uniqueIds.length === 0) return;
 
-	const limitJikan = createConcurrencyLimiter(JIKAN_CONCURRENCY)
+	const refreshMetaByAnimeId = await ctx.writer.getAnimeJikanRefreshMetas(uniqueIds);
+	const limitJikan = createConcurrencyLimiter(JIKAN_CONCURRENCY);
 
-	await runWithConcurrency(uniqueIds, ctx.config.maxConcurrency, async (animeId) => {
-		try {
-			const html = await ctx.fetchHtml(`/anime/${animeId}`)
-			if (!html) {
-				await ctx.writer.markSyncState('anime_detail', animeId, 'error', 'Anime detail page unavailable')
-				return
-			}
-
-			const detail = await extractAnimeDetail(animeId, html)
-			if (!detail) {
-				await ctx.writer.markSyncState('anime_detail', animeId, 'error', 'Could not parse anime detail')
-				return
-			}
-
-			if (detail.images?.coverImage && ctx.r2Writer?.isEnabled()) {
-				try {
-					const mirrored = await ctx.r2Writer.mirrorFromUrl(detail.images.coverImage, `animes/${animeId}`)
-					detail.images.coverImage = mirrored.url
-					detail.coverImageKey = mirrored.key
-				} catch (error) {
-					ctx.logger.warn('syncAnimeDetails: cover mirror failed', {
-						animeId,
-						error: String(error),
-					})
+	const results = await runWithConcurrency(
+		uniqueIds,
+		ctx.config.maxConcurrency,
+		async (animeId) => {
+			try {
+				const html = await loadAnimePage(ctx, animeId);
+				if (!html) {
+					return {
+						detailState: errorState(
+							"anime_detail",
+							animeId,
+							"Anime detail page unavailable",
+						),
+						jikanState: null,
+					};
 				}
-			}
 
-			await ctx.writer.upsertAnimeDetails(detail)
-			await ctx.writer.markSyncState('anime_detail', animeId, 'success')
-			await limitJikan(() => syncJikanEnrichment(ctx, detail))
-		} catch (error) {
-			await ctx.writer.markSyncState('anime_detail', animeId, 'error', String(error))
-		}
-	})
-}
+				const detail = await extractAnimeDetail(animeId, html);
+				if (!detail) {
+					return {
+						detailState: errorState(
+							"anime_detail",
+							animeId,
+							"Could not parse anime detail",
+						),
+						jikanState: null,
+					};
+				}
+
+				if (detail.images?.coverImage && ctx.r2Writer?.isEnabled()) {
+					try {
+						const mirrored = await ctx.r2Writer.mirrorFromUrl(
+							detail.images.coverImage,
+							`animes/${animeId}`,
+						);
+						detail.images.coverImage = mirrored.url;
+						detail.coverImageKey = mirrored.key;
+					} catch (error) {
+						ctx.logger.warn("syncAnimeDetails: cover mirror failed", {
+							animeId,
+							error: String(error),
+						});
+					}
+				}
+
+				await ctx.writer.upsertAnimeDetails(detail);
+
+				return {
+					detailState: successState("anime_detail", animeId),
+					jikanState: await limitJikan(() =>
+						syncJikanEnrichment(
+							ctx,
+							detail,
+							refreshMetaByAnimeId.get(animeId) ?? null,
+						),
+					),
+				};
+			} catch (error) {
+				return {
+					detailState: errorState("anime_detail", animeId, String(error)),
+					jikanState: null,
+				};
+			}
+		},
+	);
+
+	const detailStates = results.map((result) => result.detailState);
+	const jikanStates = results
+		.map((result) => result.jikanState)
+		.filter((value): value is SyncStateUpsertInput => value !== null);
+
+	await ctx.writer.upsertSyncStates([...detailStates, ...jikanStates]);
+};

@@ -49,6 +49,7 @@ export const createTestConfig = (): AppConfig => ({
 	r2Bucket: "",
 	r2PublicBaseUrl: "",
 	r2BucketBinding: "",
+	scraperCacheBinding: "SCRAPER_CACHE",
 	googleCseApiKey: "",
 	googleCseCx: "",
 	googleCseBaseUrl: "https://www.googleapis.com/customsearch/v1",
@@ -73,7 +74,7 @@ export const createPipelineContextMock = (overrides?: {
 		warns: [] as LoggerWarnCall[],
 	};
 
-	const writer = {
+	const writer: Record<string, unknown> = {
 		upsertAnimeFeedItems: async (
 			feedType: AnimeFeedCall["feedType"],
 			animeIds: string[],
@@ -102,6 +103,9 @@ export const createPipelineContextMock = (overrides?: {
 		upsertEpisodeSources: async (record: EpisodeSourcesRecord) => {
 			calls.episodeSources.push(record);
 		},
+		upsertEpisodeSourcesBatch: async (records: EpisodeSourcesRecord[]) => {
+			calls.episodeSources.push(...records);
+		},
 		markSyncState: async (
 			resourceType: string,
 			resourceId: string,
@@ -111,14 +115,62 @@ export const createPipelineContextMock = (overrides?: {
 			calls.syncStates.push({ resourceType, resourceId, status, errorMessage });
 		},
 		upsertSyncState: async () => {},
+		upsertSyncStates: async (inputs: Array<{
+			resourceType: string;
+			resourceId: string;
+			status: "pending" | "running" | "success" | "error";
+			errorMessage?: string | null;
+		}>) => {
+			for (const input of inputs) {
+				calls.syncStates.push({
+					resourceType: input.resourceType,
+					resourceId: input.resourceId,
+					status:
+						input.status === "success" || input.status === "error"
+							? input.status
+							: "error",
+					errorMessage: input.errorMessage ?? undefined,
+				});
+			}
+		},
 		getSyncState: async () => null,
+		getSyncStates: async (_resourceType: string, resourceIds: string[]) =>
+			new Map(resourceIds.map((resourceId) => [resourceId, null]).filter((entry): entry is [string, never] => entry[1] !== null)),
 		getAnimeCarouselMeta: async () => null,
+		getAnimeCarouselMetas: async (animeIds: string[]) =>
+			new Map(animeIds.map((animeId) => [animeId, null]).filter((entry): entry is [string, never] => entry[1] !== null)),
 		updateAnimeCarouselImages: async () => {},
 		getAnimeIdsFromFeed: async () => [],
 		getAnimeJikanRefreshMeta: async (): Promise<AnimeJikanRefreshMeta | null> =>
 			null,
+		getAnimeJikanRefreshMetas: async (animeIds: string[]) =>
+			new Map(
+				(
+					await Promise.all(
+						animeIds.map(async (animeId) => [
+							animeId,
+							await (writer.getAnimeJikanRefreshMeta as (
+								animeId: string,
+							) => Promise<AnimeJikanRefreshMeta | null>)(animeId),
+						]),
+					)
+				).filter(
+					(entry): entry is [string, AnimeJikanRefreshMeta] => entry[1] !== null,
+				),
+			),
 		getRecentEpisodeIds: async () => [],
 		getMaxEpisodeNumberByAnimeId: async () => 0,
+		getMaxEpisodeNumbersByAnimeIds: async (animeIds: string[]) =>
+			new Map(
+				await Promise.all(
+					animeIds.map(async (animeId) => [
+						animeId,
+						await (writer.getMaxEpisodeNumberByAnimeId as (
+							animeId: string,
+						) => Promise<number>)(animeId),
+					] as const),
+				),
+			),
 		getEpisodeIdsNeedingSourceRefresh: async () => [],
 	};
 
@@ -148,6 +200,10 @@ export const createPipelineContextMock = (overrides?: {
 			({
 				searchImageBanners: async () => [],
 			} as unknown as PipelineContext["googleSearchClient"]),
+		jikanMatchLoader: {
+			get: async () => null,
+			set: async () => {},
+		} as unknown as PipelineContext["jikanMatchLoader"],
 		fetchHtml: overrides?.fetchHtml ?? (async () => null),
 	};
 

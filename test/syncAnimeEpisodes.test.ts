@@ -18,7 +18,8 @@ describe("syncAnimeEpisodes", () => {
 		const ctx = createPipelineContext({
 			writer: {
 				...writerSpy.writer,
-				getMaxEpisodeNumberByAnimeId: async () => 2,
+				getMaxEpisodeNumbersByAnimeIds: async () =>
+					new Map([["death-note", 2]]),
 			} as unknown as typeof writerSpy.writer,
 			fetchHtml: async (path) => {
 				fetchedPaths.push(path);
@@ -60,7 +61,8 @@ describe("syncAnimeEpisodes", () => {
 		const ctx = createPipelineContext({
 			writer: {
 				...writerSpy.writer,
-				getMaxEpisodeNumberByAnimeId: async () => 3,
+				getMaxEpisodeNumbersByAnimeIds: async () =>
+					new Map([["death-note", 3]]),
 			} as unknown as typeof writerSpy.writer,
 			fetchHtml: async () => `
 				<script>

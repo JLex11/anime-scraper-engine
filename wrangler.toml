@@ -21,7 +21,13 @@ SCRAPER_REQUEST_RETRY_ATTEMPTS = "1"
 SCRAPER_LOG_LEVEL = "info"
 R2_BUCKET = "anime-app"
 R2_BUCKET_BINDING = "R2"
+SCRAPER_CACHE_BINDING = "SCRAPER_CACHE"
 
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "anime-app"
+
+[[kv_namespaces]]
+binding = "SCRAPER_CACHE"
+id = "ec0bd672948b491f8db50c1db333683b"
+preview_id = "22a9caed414f4cb18df478bdd814768d"

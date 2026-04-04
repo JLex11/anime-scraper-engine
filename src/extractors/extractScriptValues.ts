@@ -11,8 +11,7 @@ const collectScriptText = async (html: string) => {
 	return content
 }
 
-export const parseScriptAssignment = async <T>(html: string, variableName: string): Promise<T | null> => {
-	const scriptBody = await collectScriptText(html)
+const parseScriptAssignmentFromBody = <T>(scriptBody: string, variableName: string): T | null => {
 	const regex = new RegExp(`(?:var|let|const)\\s+${variableName}\\s*=\\s*([\\s\\S]*?);`)
 	const match = scriptBody.match(regex)
 	if (!match?.[1]) return null
@@ -22,6 +21,11 @@ export const parseScriptAssignment = async <T>(html: string, variableName: strin
 	} catch {
 		return null
 	}
+}
+
+export const parseScriptAssignment = async <T>(html: string, variableName: string): Promise<T | null> => {
+	const scriptBody = await collectScriptText(html)
+	return parseScriptAssignmentFromBody(scriptBody, variableName)
 }
 
 export const extractEpisodeNumbers = async (html: string): Promise<number[]> => {
@@ -37,8 +41,9 @@ export const extractEpisodeNumbers = async (html: string): Promise<number[]> => 
 }
 
 export const extractEpisodeVideos = async (html: string) => {
-	const episode = await parseScriptAssignment<number | string>(html, 'episode_number')
-	const videos = await parseScriptAssignment<unknown>(html, 'videos')
+	const scriptBody = await collectScriptText(html)
+	const episode = parseScriptAssignmentFromBody<number | string>(scriptBody, 'episode_number')
+	const videos = parseScriptAssignmentFromBody<unknown>(scriptBody, 'videos')
 	const normalizedEpisode =
 		typeof episode === 'string' ? Number(episode) : typeof episode === 'number' ? episode : 0
 

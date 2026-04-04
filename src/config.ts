@@ -17,6 +17,7 @@ export type AppConfig = {
 	r2Bucket: string;
 	r2PublicBaseUrl: string;
 	r2BucketBinding: string;
+	scraperCacheBinding: string;
 	googleCseApiKey: string;
 	googleCseCx: string;
 	googleCseBaseUrl: string;
@@ -55,6 +56,8 @@ export const createConfig = (env: RuntimeEnv): AppConfig => {
 		r2Bucket: asString(env.R2_BUCKET) || "anime-app",
 		r2PublicBaseUrl: asString(env.R2_PUBLIC_BASE_URL),
 		r2BucketBinding: asString(env.R2_BUCKET_BINDING) || "R2",
+		scraperCacheBinding:
+			asString(env.SCRAPER_CACHE_BINDING) || "SCRAPER_CACHE",
 		googleCseApiKey: asString(env.GOOGLE_CSE_API_KEY),
 		googleCseCx: asString(env.GOOGLE_CSE_CX),
 		googleCseBaseUrl:

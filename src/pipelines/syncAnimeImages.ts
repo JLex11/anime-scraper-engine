@@ -1,5 +1,5 @@
 import type { GoogleImageSearchResult } from "../clients/googleCustomSearchClient";
-import type { AnimeCarouselMeta, AnimeDetail } from "../types/models";
+import type { AnimeCarouselMeta, AnimeDetail, SyncStateMeta, SyncStateUpsertInput } from "../types/models";
 import { runWithConcurrency } from "../utils/concurrency";
 import type { PipelineContext } from "./context";
 
@@ -151,44 +151,52 @@ const mirrorCandidates = async (
 	candidates: GoogleImageSearchResult[],
 	existingCount: number,
 ) => {
-	const mirrored: PersistedBanner[] = [];
+	const mirrored = (
+		await runWithConcurrency(
+			candidates,
+			Math.min(2, Math.max(1, candidates.length)),
+			async (candidate) => {
+				try {
+					const result = await ctx.r2Writer?.mirrorFromUrl(
+						candidate.link,
+						`animes/${animeId}/carousel`,
+					);
+					if (!result?.key || !result.url) return null;
+					return {
+						link: result.url,
+						key: result.key,
+						width: candidate.width,
+						height: candidate.height,
+					} satisfies PersistedBanner;
+				} catch (error) {
+					ctx.logger.warn("syncAnimeImages: mirror failed", {
+						animeId,
+						link: candidate.link,
+						error: String(error),
+					});
+					return null;
+				}
+			},
+		)
+	).filter((value): value is PersistedBanner => value !== null);
+
+	const deduped: PersistedBanner[] = [];
 	const seenKeys = new Set<string>();
-
-	for (const candidate of candidates) {
-		if (existingCount + mirrored.length >= TARGET_BANNERS) break;
-
-		try {
-			const result = await ctx.r2Writer?.mirrorFromUrl(
-				candidate.link,
-				`animes/${animeId}/carousel`,
-			);
-			if (!result?.key || !result.url || seenKeys.has(result.key)) continue;
-
-			seenKeys.add(result.key);
-			mirrored.push({
-				link: result.url,
-				key: result.key,
-				width: candidate.width,
-				height: candidate.height,
-			});
-		} catch (error) {
-			ctx.logger.warn("syncAnimeImages: mirror failed", {
-				animeId,
-				link: candidate.link,
-				error: String(error),
-			});
-		}
+	for (const banner of mirrored) {
+		if (existingCount + deduped.length >= TARGET_BANNERS) break;
+		if (seenKeys.has(banner.key)) continue;
+		seenKeys.add(banner.key);
+		deduped.push(banner);
 	}
 
-	return mirrored;
+	return deduped;
 };
 
-const markSuccess = async (
-	ctx: PipelineContext,
+const markSuccess = (
 	animeId: string,
 	now: Date,
 ) => {
-	await ctx.writer.upsertSyncState({
+	return {
 		resourceType: RESOURCE_TYPE,
 		resourceId: animeId,
 		status: "success",
@@ -197,11 +205,10 @@ const markSuccess = async (
 		errorCount: 0,
 		errorMessage: null,
 		nextRunAt: toIso(withDays(now, 14)),
-	});
+	} satisfies SyncStateUpsertInput;
 };
 
-const markErrorWithBackoff = async (
-	ctx: PipelineContext,
+const markErrorWithBackoff = (
 	animeId: string,
 	now: Date,
 	previousErrorCount: number,
@@ -211,7 +218,7 @@ const markErrorWithBackoff = async (
 	const nextErrorCount = previousErrorCount + 1;
 	const retryInDays = getBackoffDays(nextErrorCount);
 
-	await ctx.writer.upsertSyncState({
+	return {
 		resourceType: RESOURCE_TYPE,
 		resourceId: animeId,
 		status: "error",
@@ -220,52 +227,47 @@ const markErrorWithBackoff = async (
 		errorCount: nextErrorCount,
 		errorMessage,
 		nextRunAt: toIso(withDays(now, retryInDays)),
-	});
+	} satisfies SyncStateUpsertInput;
 };
 
 const syncOneAnime = async (
 	ctx: PipelineContext,
 	animeId: string,
 	now: Date,
+	meta: AnimeCarouselMeta | null,
+	syncState: SyncStateMeta | null,
 ) => {
-	const meta = await ctx.writer.getAnimeCarouselMeta(animeId);
 	if (!meta?.title) {
-		await markErrorWithBackoff(
-			ctx,
+		return markErrorWithBackoff(
 			animeId,
 			now,
 			0,
 			"Anime record not found",
 			null,
 		);
-		return;
 	}
 
-	const syncState = await ctx.writer.getSyncState(RESOURCE_TYPE, animeId);
 	if (isBlockedByNextRun(syncState?.nextRunAt, now)) {
-		return;
+		return null;
 	}
 
 	const existing = mapExistingBanners(meta);
 	if (existing.length > 0 && isFreshSuccess(syncState?.lastSuccessAt, now)) {
-		return;
+		return null;
 	}
 
 	if (!ctx.r2Writer?.isEnabled()) {
 		if (existing.length > 0) {
-			await markSuccess(ctx, animeId, now);
-			return;
+			return markSuccess(animeId, now);
 		}
 
-		await markErrorWithBackoff(
-			ctx,
+		return markErrorWithBackoff(
 			animeId,
 			now,
 			syncState?.errorCount ?? 0,
 			"R2 mirror is required for carousel images",
 			syncState?.lastSuccessAt,
 		);
-		return;
 	}
 
 	const queries = buildQueries(meta);
@@ -279,15 +281,13 @@ const syncOneAnime = async (
 	const merged = mergeBanners(existing, mirrored);
 
 	if (merged.length === 0) {
-		await markErrorWithBackoff(
-			ctx,
+		return markErrorWithBackoff(
 			animeId,
 			now,
 			syncState?.errorCount ?? 0,
 			"No mirrored carousel images available",
 			syncState?.lastSuccessAt,
 		);
-		return;
 	}
 
 	const mergedKeys = merged.map((banner) => banner.key);
@@ -304,7 +304,7 @@ const syncOneAnime = async (
 		);
 	}
 
-	await markSuccess(ctx, animeId, now);
+	return markSuccess(animeId, now);
 };
 
 export const syncAnimeImages = async (
@@ -314,17 +314,24 @@ export const syncAnimeImages = async (
 ) => {
 	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean);
 	if (uniqueIds.length === 0) return;
+	const metaById = await ctx.writer.getAnimeCarouselMetas(uniqueIds);
+	const syncStateById = await ctx.writer.getSyncStates(RESOURCE_TYPE, uniqueIds);
 
-	await runWithConcurrency(
+	const stateResults = await runWithConcurrency(
 		uniqueIds,
 		Math.min(ctx.config.maxConcurrency, PIPELINE_CONCURRENCY),
 		async (animeId) => {
 			try {
-				await syncOneAnime(ctx, animeId, now);
-			} catch (error) {
-				const previous = await ctx.writer.getSyncState(RESOURCE_TYPE, animeId);
-				await markErrorWithBackoff(
+				return await syncOneAnime(
 					ctx,
+					animeId,
+					now,
+					metaById.get(animeId) ?? null,
+					syncStateById.get(animeId) ?? null,
+				);
+			} catch (error) {
+				const previous = syncStateById.get(animeId);
+				return markErrorWithBackoff(
 					animeId,
 					now,
 					previous?.errorCount ?? 0,
@@ -334,4 +341,9 @@ export const syncAnimeImages = async (
 			}
 		},
 	);
+	const states: SyncStateUpsertInput[] = stateResults.filter(
+		(value): value is NonNullable<typeof value> => value !== null,
+	);
+
+	await ctx.writer.upsertSyncStates(states);
 };

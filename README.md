@@ -230,6 +230,7 @@ Vars no sensibles ya definidas en `wrangler.toml`:
 - `SCRAPER_LOG_LEVEL`
 - `R2_BUCKET`
 - `R2_BUCKET_BINDING`
+- `SCRAPER_CACHE_BINDING`
 
 Solo si quieres mirror de imagenes publico:
 
@@ -239,6 +240,10 @@ Solo si quieres poblar `carouselImages` con Google CSE:
 
 - `GOOGLE_CSE_API_KEY`
 - `GOOGLE_CSE_CX`
+
+Opcional para cache persistente de requests:
+
+- un namespace KV enlazado con el binding `SCRAPER_CACHE`
 
 Opcional (normalmente no hace falta tocarla):
 

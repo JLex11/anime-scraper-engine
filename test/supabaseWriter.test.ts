@@ -109,7 +109,7 @@ describe('SupabaseWriter', () => {
 		])
 	})
 
-	test('ensureAnimeRecords inserta seeds sin sobrescribir existentes', async () => {
+	test('ensureAnimeRecords inserta seeds con upsert idempotente', async () => {
 		const { supabase, upsertCalls, selectCalls } = createSupabaseMock(undefined, {
 			animes: [],
 		})
@@ -139,19 +139,13 @@ describe('SupabaseWriter', () => {
 						originalLink: 'https://www3.animeflv.net/anime/naruto',
 					},
 				],
-				options: undefined,
-				method: 'insert',
+				options: { onConflict: 'animeId', ignoreDuplicates: true },
 			},
 		])
-		expect(selectCalls).toContainEqual({
-			table: 'animes',
-			columns: 'animeId',
-			filters: [{ type: 'in', column: 'animeId', value: ['naruto'] }],
-			orders: [],
-		})
+		expect(selectCalls).toHaveLength(0)
 	})
 
-	test('ensureAnimeRecords no inserta seeds que ya existen', async () => {
+	test('ensureAnimeRecords sigue siendo idempotente si el anime ya existe', async () => {
 		const { supabase, upsertCalls } = createSupabaseMock(undefined, {
 			animes: [{ animeId: 'naruto' }],
 		})
@@ -164,7 +158,20 @@ describe('SupabaseWriter', () => {
 			},
 		])
 
-		expect(upsertCalls).toHaveLength(0)
+		expect(upsertCalls).toEqual([
+			{
+				table: 'animes',
+				payload: [
+					{
+						animeId: 'naruto',
+						title: 'Naruto',
+						type: 'Anime',
+						originalLink: null,
+					},
+				],
+				options: { onConflict: 'animeId', ignoreDuplicates: true },
+			},
+		])
 	})
 
 	test('upsertAnimeDetails persiste anime y relacionados', async () => {

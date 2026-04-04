@@ -2,6 +2,7 @@ import { extractEpisodeIds } from '../extractors/extractIds'
 import type { EpisodeDetail } from '../types/models'
 import { buildAnimeSeed } from '../utils/animeSeed'
 import type { PipelineContext } from './context'
+import { loadHomepage } from './pageAccess'
 
 const parseEpisodeNumber = (episodeId: string) => {
 	const match = episodeId.match(/-(\d+)$/)
@@ -14,7 +15,7 @@ const parseAnimeIdFromEpisode = (episodeId: string) => {
 }
 
 export const syncLatestEpisodes = async (ctx: PipelineContext) => {
-	const html = await ctx.fetchHtml('/')
+	const html = await loadHomepage(ctx)
 	if (!html) {
 		ctx.logger.warn('syncLatestEpisodes: homepage unavailable')
 		await ctx.writer.markSyncState('feed', 'latest_episodes', 'error', 'Homepage unavailable')

@@ -2,12 +2,13 @@ import { extractAnimeIds } from '../extractors/extractIds'
 import { buildAnimeSeed } from '../utils/animeSeed'
 import { syncAnimeDetails } from './syncAnimeDetails'
 import type { PipelineContext } from './context'
+import { loadHomepage } from './pageAccess'
 
 const FEED_LIMIT = 40
 const DETAIL_WARM_LIMIT = 3
 
 export const syncBroadcast = async (ctx: PipelineContext) => {
-	const html = await ctx.fetchHtml('/')
+	const html = await loadHomepage(ctx)
 	if (!html) {
 		ctx.logger.warn('syncBroadcast: homepage unavailable')
 		await ctx.writer.markSyncState('feed', 'broadcast_animes', 'error', 'Homepage unavailable')

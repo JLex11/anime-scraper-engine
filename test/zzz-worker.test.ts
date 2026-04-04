@@ -22,7 +22,10 @@ mock.module("../src/runtime", () => ({
 		writer: {
 			ensureAnimeRecords: ensureAnimeRecordsMock,
 			upsertEpisodes: upsertEpisodesMock,
+			upsertSyncStates: async () => {},
 			getMaxEpisodeNumberByAnimeId: async () => 0,
+			getMaxEpisodeNumbersByAnimeIds: async (animeIds: string[]) =>
+				new Map(animeIds.map((animeId) => [animeId, 0])),
 			markSyncState: async () => {},
 		},
 		logger: {
@@ -40,6 +43,7 @@ mock.module("../src/runtime", () => ({
 }));
 
 const { default: worker } = await import("../src/worker");
+mock.restore();
 
 describe("worker", () => {
 	beforeEach(() => {
@@ -178,7 +182,25 @@ describe("worker", () => {
 			includeEpisodes: true,
 		});
 		expect(ensureAnimeRecordsMock).toHaveBeenCalledTimes(1);
-		expect(upsertEpisodesMock).toHaveBeenCalledTimes(2);
+		expect(upsertEpisodesMock).toHaveBeenCalled();
+		const allEpisodes = upsertEpisodesMock.mock.calls.flatMap((call) => {
+			const payload = (call as unknown[])[0];
+			return Array.isArray(payload)
+				? (payload as Array<Record<string, unknown>>)
+				: [];
+		});
+		expect(allEpisodes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					episodeId: "bleach-1",
+					animeId: "bleach",
+				}),
+				expect.objectContaining({
+					episodeId: "naruto-1",
+					animeId: "naruto",
+				}),
+			]),
+		);
 	});
 
 	test("scrape/anime rechaza payload sin trabajo habilitado", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { syncEpisodeSources } from '../src/pipelines/syncEpisodeSources'
 import type { EpisodeSourcesRecord } from '../src/types/models'
+import { syncEpisodeSources } from './helpers/realSyncEpisodeSources'
 import { createPipelineContextMock } from './helpers/pipelineTestUtils'
 import { loadFixture } from './helpers/loadFixture'
 

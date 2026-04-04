@@ -261,10 +261,16 @@ describe('syncAnimeDetails', () => {
 	test('si el enrichment Jikan sigue vigente, no vuelve a consultar la API', async () => {
 		const writerSpy = createWriterSpy()
 		const jikanSpy = createJikanClientSpy()
-		writerSpy.writer.getAnimeJikanRefreshMeta = async () => ({
-			malId: 1923,
-			jikanExpiresAt: '2099-01-01T00:00:00.000Z',
-		})
+		writerSpy.writer.getAnimeJikanRefreshMetas = async () =>
+			new Map([
+				[
+					'attack-on-titan',
+					{
+						malId: 1923,
+						jikanExpiresAt: '2099-01-01T00:00:00.000Z',
+					},
+				],
+			])
 
 		const ctx = createPipelineContext({
 			writer: writerSpy.writer,
@@ -306,10 +312,16 @@ describe('syncAnimeDetails', () => {
 			full: createFullResult(),
 			videos: createVideosResult(),
 		})
-		writerSpy.writer.getAnimeJikanRefreshMeta = async () => ({
-			malId: 1923,
-			jikanExpiresAt: '2020-01-01T00:00:00.000Z',
-		})
+		writerSpy.writer.getAnimeJikanRefreshMetas = async () =>
+			new Map([
+				[
+					'attack-on-titan',
+					{
+						malId: 1923,
+						jikanExpiresAt: '2020-01-01T00:00:00.000Z',
+					},
+				],
+			])
 
 		const ctx = createPipelineContext({
 			writer: writerSpy.writer,

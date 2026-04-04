@@ -1,13 +1,14 @@
 import { extractAnimeIds } from '../extractors/extractIds'
 import { buildAnimeSeed } from '../utils/animeSeed'
 import type { PipelineContext } from './context'
+import { loadDirectoryPage } from './pageAccess'
 
 export const syncDirectoryAnimes = async (ctx: PipelineContext, pages = 3) => {
 	let successPages = 0
 	const failedPages: number[] = []
 
 	for (let page = 1; page <= pages; page += 1) {
-		const html = await ctx.fetchHtml(`/browse?page=${page}`)
+		const html = await loadDirectoryPage(ctx, page)
 		if (!html) {
 			ctx.logger.warn('syncDirectoryAnimes: page unavailable', { page })
 			failedPages.push(page)

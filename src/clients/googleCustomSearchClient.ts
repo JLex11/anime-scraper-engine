@@ -1,3 +1,8 @@
+import {
+	RequestCoordinator,
+	type FetchLike,
+} from "../http/requestCoordinator";
+
 type GoogleCustomSearchClientConfig = {
 	googleCseApiKey: string;
 	googleCseCx: string;
@@ -6,14 +11,6 @@ type GoogleCustomSearchClientConfig = {
 	requestRetryAttempts: number;
 	onLog?: (level: "info" | "warn", message: string, meta?: unknown) => void;
 };
-
-type FetchLike = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
-
-const defaultFetch: FetchLike = (input, init) =>
-	globalThis.fetch(input as RequestInfo | URL, init);
 
 type GoogleImagePayload = {
 	items?: Array<{
@@ -40,16 +37,6 @@ const defaultHeaders = {
 		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36 anime-scraper-engine/0.1",
 	accept: "application/json",
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const isTransientError = (error: unknown) => {
-	if (!(error instanceof Error)) return false;
-	return error.name === "TimeoutError" || error.name === "AbortError";
-};
-
-const isTransientStatus = (status: number) =>
-	status === 408 || status === 425 || status === 429 || status >= 500;
 
 const createUrl = (
 	baseUrl: string,
@@ -78,63 +65,49 @@ const isAbsoluteHttpUrl = (value: string) => {
 };
 
 export class GoogleCustomSearchClient {
+	private readonly requestCoordinator: RequestCoordinator;
+
 	constructor(
 		private readonly config: GoogleCustomSearchClientConfig,
-		private readonly fetchImpl: FetchLike = defaultFetch,
-	) {}
+		requestOrFetch?: FetchLike | RequestCoordinator,
+		requestCoordinator?: RequestCoordinator,
+	) {
+		if (
+			requestOrFetch &&
+			typeof requestOrFetch === "object" &&
+			"requestJson" in requestOrFetch
+		) {
+			this.requestCoordinator = requestOrFetch as RequestCoordinator;
+			return;
+		}
+
+		this.requestCoordinator =
+			requestCoordinator ??
+			new RequestCoordinator({
+				defaultTimeoutMs: config.requestTimeoutMs,
+				defaultRetryAttempts: config.requestRetryAttempts,
+				fetchImpl: requestOrFetch as FetchLike | undefined,
+			});
+	}
 
 	private async request(
 		params: Record<string, string | number>,
 	): Promise<GoogleImagePayload | null> {
-		const attempts = Math.max(1, this.config.requestRetryAttempts + 1);
 		const url = createUrl(this.config.googleCseBaseUrl, params);
-
-		for (let attempt = 1; attempt <= attempts; attempt += 1) {
-			try {
-				const response = await this.fetchImpl(url, {
-					headers: defaultHeaders,
-					signal: AbortSignal.timeout(this.config.requestTimeoutMs),
-				});
-
-				if (response.ok) {
-					return (await response.json()) as GoogleImagePayload;
-				}
-
-				let bodyPreview = "";
-				try {
-					bodyPreview = (await response.text()).slice(0, 300);
-				} catch {
-					bodyPreview = "";
-				}
-
-				this.config.onLog?.("warn", "google_cse.request.non_ok", {
-					url,
-					status: response.status,
-					attempt,
-					bodyPreview,
-				});
-
-				if (!isTransientStatus(response.status)) {
-					return null;
-				}
-			} catch (error) {
-				this.config.onLog?.("warn", "google_cse.request.error", {
-					url,
-					attempt,
-					error: error instanceof Error ? error.message : String(error),
-				});
-
-				if (!isTransientError(error)) {
-					return null;
-				}
-			}
-
-			if (attempt < attempts) {
-				await sleep(250 * attempt);
-			}
-		}
-
-		return null;
+		return this.requestCoordinator.requestJson<GoogleImagePayload>(
+			url,
+			{ headers: defaultHeaders },
+			{
+				cacheKey: `google-cse:${JSON.stringify(params)}`,
+				ttlMs: 24 * 60 * 60 * 1000,
+				staleWhileRevalidateMs: 60 * 60 * 1000,
+				cacheScope: "persistent",
+				dedupe: true,
+				retryAttempts: this.config.requestRetryAttempts,
+				timeoutMs: this.config.requestTimeoutMs,
+				meta: { query: params.q ?? null },
+			},
+		);
 	}
 
 	async searchImageBanners(

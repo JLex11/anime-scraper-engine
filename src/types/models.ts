@@ -183,6 +183,15 @@ export interface AnimeJikanRefreshMeta {
 	jikanExpiresAt: string | null;
 }
 
+export interface CachedJikanMatchMeta {
+	animeId: string;
+	malId: number;
+	matchedQuery: string;
+	matchedTitle: string;
+	matchScore: number;
+	cachedAt: string;
+}
+
 export interface EpisodeDetail {
 	episodeId: string;
 	animeId: string;
