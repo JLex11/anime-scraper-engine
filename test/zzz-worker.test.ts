@@ -2,6 +2,41 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const runOnceMock = mock(async () => {});
 const runTaskByNameMock = mock(async () => {});
+const runManualBatchMock = mock(async () => {});
+const getManualBatchTaskNamesMock = mock(
+	(batch: string) =>
+		(
+			{
+				"feed-latest": ["sync-latest-animes", "sync-latest-episodes"],
+				"feed-secondary": [
+					"sync-broadcast",
+					"sync-top-rated",
+					"sync-episode-sources",
+				],
+				"directory-refresh": ["sync-directory"],
+				"detail-refresh": ["sync-details-and-episodes", "sync-anime-images"],
+			} as Record<string, string[]>
+		)[batch] ?? [],
+);
+const manualBatchManifest = [
+	{
+		batch: "feed-latest",
+		tasks: ["sync-latest-animes", "sync-latest-episodes"],
+	},
+	{
+		batch: "feed-secondary",
+		tasks: ["sync-broadcast", "sync-top-rated", "sync-episode-sources"],
+	},
+	{
+		batch: "directory-refresh",
+		tasks: ["sync-directory"],
+	},
+	{
+		batch: "detail-refresh",
+		tasks: ["sync-details-and-episodes", "sync-anime-images"],
+	},
+] as const;
+const getManualBatchManifestMock = mock(() => manualBatchManifest);
 const syncEpisodeSourcesMock = mock(async () => {});
 const ensureAnimeRecordsMock = mock(async () => {});
 const upsertEpisodesMock = mock(async () => {});
@@ -10,6 +45,9 @@ mock.module("../src/scheduler", () => ({
 	runCron: async () => {},
 	runOnce: runOnceMock,
 	runTaskByName: runTaskByNameMock,
+	runManualBatch: runManualBatchMock,
+	getManualBatchTaskNames: getManualBatchTaskNamesMock,
+	getManualBatchManifest: getManualBatchManifestMock,
 }));
 
 mock.module("../src/pipelines/syncEpisodeSources", () => ({
@@ -49,6 +87,9 @@ describe("worker", () => {
 	beforeEach(() => {
 		runOnceMock.mockClear();
 		runTaskByNameMock.mockClear();
+		runManualBatchMock.mockClear();
+		getManualBatchTaskNamesMock.mockClear();
+		getManualBatchManifestMock.mockClear();
 		syncEpisodeSourcesMock.mockClear();
 		ensureAnimeRecordsMock.mockClear();
 		upsertEpisodesMock.mockClear();
@@ -80,7 +121,7 @@ describe("worker", () => {
 		expect(runOnceMock).not.toHaveBeenCalled();
 	});
 
-	test("run-once ejecuta scheduler con bearer token valido", async () => {
+	test("run-once sin params devuelve manifiesto de batches", async () => {
 		const response = await worker.fetch(
 			new Request("https://example.test/run-once", {
 				method: "POST",
@@ -98,9 +139,68 @@ describe("worker", () => {
 		expect(response.status).toBe(200);
 		await expect(response.json()).resolves.toEqual({
 			ok: true,
-			mode: "run-once",
+			mode: "run-plan",
+			batches: manualBatchManifest,
 		});
-		expect(runOnceMock).toHaveBeenCalledTimes(1);
+		expect(getManualBatchManifestMock).toHaveBeenCalledTimes(1);
+		expect(runOnceMock).not.toHaveBeenCalled();
+	});
+
+	test("run-once puede ejecutar un batch explicito", async () => {
+		const response = await worker.fetch(
+			new Request("https://example.test/run-once?batch=feed-secondary", {
+				method: "POST",
+				headers: {
+					authorization: "Bearer secret-token",
+				},
+			}),
+			{
+				SCRAPER_MANUAL_RUN_TOKEN: "secret-token",
+				SUPABASE_URL: "https://supabase.test",
+				SUPABASE_SERVICE_ROLE_KEY: "service-role",
+			},
+		);
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({
+			ok: true,
+			mode: "run-batch",
+			batch: "feed-secondary",
+			tasks: ["sync-broadcast", "sync-top-rated", "sync-episode-sources"],
+		});
+		expect(runManualBatchMock).toHaveBeenCalledTimes(1);
+		expect(runManualBatchMock).toHaveBeenCalledWith(
+			expect.anything(),
+			"feed-secondary",
+		);
+		expect(runOnceMock).not.toHaveBeenCalled();
+	});
+
+	test("run-once rechaza task y batch al mismo tiempo", async () => {
+		const response = await worker.fetch(
+			new Request(
+				"https://example.test/run-once?task=sync-latest-animes&batch=feed-latest",
+				{
+					method: "POST",
+					headers: {
+						authorization: "Bearer secret-token",
+					},
+				},
+			),
+			{
+				SCRAPER_MANUAL_RUN_TOKEN: "secret-token",
+				SUPABASE_URL: "https://supabase.test",
+				SUPABASE_SERVICE_ROLE_KEY: "service-role",
+			},
+		);
+
+		expect(response.status).toBe(400);
+		await expect(response.json()).resolves.toEqual({
+			error: "Provide only one of task or batch",
+		});
+		expect(runTaskByNameMock).not.toHaveBeenCalled();
+		expect(runManualBatchMock).not.toHaveBeenCalled();
+		expect(runOnceMock).not.toHaveBeenCalled();
 	});
 
 	test("run-once puede ejecutar una tarea puntual via query param task", async () => {

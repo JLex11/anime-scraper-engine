@@ -189,7 +189,7 @@ describe('syncAnimeDetails', () => {
 
 		expect(fetchedPaths).toEqual(['/anime/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru'])
 		expect(mirroredUrls).toEqual([
-			'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru:/uploads/animes/covers/4343.jpg',
+			'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru:https://example.test/uploads/animes/covers/4343.jpg',
 		])
 		expect(jikanSpy.calls.searches).toEqual(['Mamonogurai no Boukensha: Ore dake Mamono wo Kuratte Tsuyoku Naru'])
 		expect(jikanSpy.calls.full).toEqual([64154])
@@ -203,7 +203,7 @@ describe('syncAnimeDetails', () => {
 				status: 'En emision',
 				coverImageKey: 'animes/mamonogurai-no-boukensha-ore-dake-mamono-wo-kuratte-tsuyoku-naru/4343.jpg',
 				images: {
-					coverImage: '/uploads/animes/covers/4343.jpg',
+					coverImage: 'https://example.test/uploads/animes/covers/4343.jpg',
 					carouselImages: [],
 				},
 			})
@@ -536,5 +536,50 @@ describe('syncAnimeDetails', () => {
 				},
 			},
 		])
+	})
+
+	test('normaliza cover relativo aunque falle el mirror', async () => {
+		const writerSpy = createWriterSpy()
+		const loggerSpy = createLoggerSpy()
+		const ctx = createPipelineContext({
+			writer: writerSpy.writer,
+			logger: loggerSpy.logger,
+			fetchHtml: async () => `
+				<div class="Ficha">
+					<h1> Attack on Titan </h1>
+					<span class="Type tv">Anime</span>
+				</div>
+				<div class="AnimeCover"><img src="/uploads/animes/covers/aot.jpg" /></div>
+			`,
+			r2Writer: {
+				isEnabled: () => true,
+				mirrorFromUrl: async () => {
+					throw new Error('r2 down')
+				},
+			} as unknown as NonNullable<ReturnType<typeof createPipelineContext>['r2Writer']>,
+		})
+
+		await syncAnimeDetails(ctx, ['attack-on-titan'])
+
+		expect(writerSpy.animeDetails).toEqual([
+			expect.objectContaining({
+				animeId: 'attack-on-titan',
+				images: {
+					coverImage: 'https://example.test/uploads/animes/covers/aot.jpg',
+					carouselImages: [],
+				},
+			}),
+		])
+		expect(loggerSpy.warns).toEqual(
+			expect.arrayContaining([
+				{
+					message: 'syncAnimeDetails: cover mirror failed',
+					meta: {
+						animeId: 'attack-on-titan',
+						error: 'Error: r2 down',
+					},
+				},
+			]),
+		)
 	})
 })

@@ -8,6 +8,14 @@ import { syncEpisodeSources } from "../pipelines/syncEpisodeSources";
 import { syncLatestAnimes } from "../pipelines/syncLatestAnimes";
 import { syncLatestEpisodes } from "../pipelines/syncLatestEpisodes";
 import { syncTopRated } from "../pipelines/syncTopRated";
+import {
+	formatSchedulerAggregateErrorMessage,
+	getManualBatchManifest,
+	getManualBatchTaskNames,
+	MANUAL_BATCHES,
+	type ManualBatchName,
+	type TaskName,
+} from "./shared";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -19,16 +27,13 @@ export const CRON_EVERY_15 = "*/15 * * * *";
 export const CRON_EVERY_30 = "*/30 * * * *";
 export const CRON_DAILY_DIRECTORY = "5 0 * * *";
 export const CRON_DAILY_DETAILS = "20 */6 * * *";
-
-export type TaskName =
-	| "sync-latest-animes"
-	| "sync-latest-episodes"
-	| "sync-broadcast"
-	| "sync-top-rated"
-	| "sync-directory"
-	| "sync-details-and-episodes"
-	| "sync-anime-images"
-	| "sync-episode-sources";
+export {
+	formatSchedulerAggregateErrorMessage,
+	getManualBatchManifest,
+	getManualBatchTaskNames,
+	MANUAL_BATCHES,
+};
+export type { ManualBatchName, TaskName } from "./shared";
 
 type TaskSpec = {
 	name: TaskName;
@@ -118,18 +123,29 @@ const runTasksSequentially = async (
 	tasks: TaskSpec[],
 	throwOnError = true,
 ) => {
-	const errors: Error[] = [];
+	const failures: Array<{ taskName: TaskName; error: Error }> = [];
 
 	for (const task of tasks) {
 		try {
 			await runTask(ctx, task);
 		} catch (error) {
-			errors.push(error instanceof Error ? error : new Error(String(error)));
+			failures.push({
+				taskName: task.name,
+				error: error instanceof Error ? error : new Error(String(error)),
+			});
 		}
 	}
 
-	if (throwOnError && errors.length > 0) {
-		throw new AggregateError(errors, "One or more scheduler tasks failed");
+	if (throwOnError && failures.length > 0) {
+		const errors = failures.map(({ taskName, error }) => {
+			const wrapped = new Error(`${taskName}: ${error.message}`);
+			wrapped.name = error.name || "Error";
+			return wrapped;
+		});
+		throw new AggregateError(
+			errors,
+			formatSchedulerAggregateErrorMessage(failures),
+		);
 	}
 };
 
@@ -170,6 +186,17 @@ export const runCron = async (ctx: PipelineContext, cronExpression: string) => {
 		return;
 	}
 
+	const tasks = buildTaskSpecs(ctx).filter((task) =>
+		taskNames.includes(task.name),
+	);
+	await runTasksSequentially(ctx, tasks);
+};
+
+export const runManualBatch = async (
+	ctx: PipelineContext,
+	batchName: ManualBatchName,
+) => {
+	const taskNames = getManualBatchTaskNames(batchName);
 	const tasks = buildTaskSpecs(ctx).filter((task) =>
 		taskNames.includes(task.name),
 	);

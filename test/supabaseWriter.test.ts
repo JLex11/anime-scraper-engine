@@ -9,6 +9,11 @@ type UpsertCall = {
 	method?: 'insert'
 }
 
+type RpcCall = {
+	fn: string
+	args: Record<string, unknown>
+}
+
 type SelectCall = {
 	table: string
 	columns: string
@@ -22,9 +27,14 @@ const createSupabaseMock = (
 	selectDataByTable?: Partial<Record<string, unknown[]>>
 ) => {
 	const upsertCalls: UpsertCall[] = []
+	const rpcCalls: RpcCall[] = []
 	const selectCalls: SelectCall[] = []
 
 	const supabase = {
+		rpc(fn: string, args: Record<string, unknown>) {
+			rpcCalls.push({ fn, args })
+			return Promise.resolve({ data: null, error: errorByTable?.[fn] ?? null })
+		},
 		from(table: string) {
 			const query: SelectCall = {
 				table,
@@ -75,36 +85,47 @@ const createSupabaseMock = (
 	return {
 		supabase: supabase as unknown as SupabaseClient,
 		upsertCalls,
+		rpcCalls,
 		selectCalls,
 	}
 }
 
 describe('SupabaseWriter', () => {
-	test('upsertAnimeFeedItems persiste feed de animes con page y position', async () => {
-		const { supabase, upsertCalls } = createSupabaseMock()
+	test('upsertAnimeFeedItems reemplaza snapshot de feed de animes via rpc', async () => {
+		const { supabase, rpcCalls, upsertCalls } = createSupabaseMock()
 		const writer = new SupabaseWriter(supabase)
 
-		await writer.upsertAnimeFeedItems('latest', ['naruto', 'bleach'], 2)
+		await writer.upsertAnimeFeedItems('latest', ['naruto', 'bleach', 'naruto', ''], 2)
 
-		expect(upsertCalls).toHaveLength(1)
-		expect(upsertCalls[0].table).toBe('anime_feed_items')
-		expect(upsertCalls[0].options).toEqual({ onConflict: 'feed_type,page,position' })
-
-		const payload = upsertCalls[0].payload as Array<Record<string, unknown>>
-		expect(payload).toEqual([
+		expect(upsertCalls).toHaveLength(0)
+		expect(rpcCalls).toEqual([
 			{
-				feed_type: 'latest',
-				anime_id: 'naruto',
-				page: 2,
-				position: 0,
-				feed_fetched_at: expect.any(String),
+				fn: 'replace_anime_feed_page',
+				args: {
+					p_feed_type: 'latest',
+					p_page: 2,
+					p_anime_ids: ['naruto', 'bleach'],
+					p_feed_fetched_at: expect.any(String),
+				},
 			},
+		])
+	})
+
+	test('upsertEpisodeFeedItems reemplaza snapshot de episodios via rpc', async () => {
+		const { supabase, rpcCalls, upsertCalls } = createSupabaseMock()
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.upsertEpisodeFeedItems('latest', ['naruto-1', 'bleach-2', 'naruto-1', ''])
+
+		expect(upsertCalls).toHaveLength(0)
+		expect(rpcCalls).toEqual([
 			{
-				feed_type: 'latest',
-				anime_id: 'bleach',
-				page: 2,
-				position: 1,
-				feed_fetched_at: expect.any(String),
+				fn: 'replace_episode_feed',
+				args: {
+					p_feed_type: 'latest',
+					p_episode_ids: ['naruto-1', 'bleach-2'],
+					p_feed_fetched_at: expect.any(String),
+				},
 			},
 		])
 	})
@@ -420,29 +441,21 @@ describe('SupabaseWriter', () => {
 		])
 	})
 
-	test('upsertEpisodeFeedItems persiste feed de episodios', async () => {
-		const { supabase, upsertCalls } = createSupabaseMock()
+	test('upsertEpisodeFeedItems persiste feed de episodios via rpc', async () => {
+		const { supabase, rpcCalls, upsertCalls } = createSupabaseMock()
 		const writer = new SupabaseWriter(supabase)
 
 		await writer.upsertEpisodeFeedItems('latest', ['bleach-1', 'bleach-2'])
 
-		expect(upsertCalls).toHaveLength(1)
-		expect(upsertCalls[0].table).toBe('episode_feed_items')
-		expect(upsertCalls[0].options).toEqual({ onConflict: 'feed_type,position' })
-
-		const payload = upsertCalls[0].payload as Array<Record<string, unknown>>
-		expect(payload).toEqual([
+		expect(upsertCalls).toHaveLength(0)
+		expect(rpcCalls).toEqual([
 			{
-				feed_type: 'latest',
-				episode_id: 'bleach-1',
-				position: 0,
-				feed_fetched_at: expect.any(String),
-			},
-			{
-				feed_type: 'latest',
-				episode_id: 'bleach-2',
-				position: 1,
-				feed_fetched_at: expect.any(String),
+				fn: 'replace_episode_feed',
+				args: {
+					p_feed_type: 'latest',
+					p_episode_ids: ['bleach-1', 'bleach-2'],
+					p_feed_fetched_at: expect.any(String),
+				},
 			},
 		])
 	})

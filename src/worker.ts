@@ -2,7 +2,15 @@ import { syncAnimeDetails } from "./pipelines/syncAnimeDetails";
 import { syncAnimeEpisodes } from "./pipelines/syncAnimeEpisodes";
 import { syncEpisodeSources } from "./pipelines/syncEpisodeSources";
 import { createPipelineContext } from "./runtime";
-import { runCron, runOnce, runTaskByName, type TaskName } from "./scheduler";
+import {
+	getManualBatchManifest,
+	getManualBatchTaskNames,
+	runCron,
+	runManualBatch,
+	runTaskByName,
+	type ManualBatchName,
+	type TaskName,
+} from "./scheduler";
 import type { EpisodeDetail } from "./types/models";
 import { buildAnimeSeed, humanizeAnimeId } from "./utils/animeSeed";
 
@@ -21,6 +29,18 @@ const asTaskName = (value: string): TaskName | null => {
 		case "sync-details-and-episodes":
 		case "sync-anime-images":
 		case "sync-episode-sources":
+			return value;
+		default:
+			return null;
+	}
+};
+
+const asBatchName = (value: string): ManualBatchName | null => {
+	switch (value) {
+		case "feed-latest":
+		case "feed-secondary":
+		case "directory-refresh":
+		case "detail-refresh":
 			return value;
 		default:
 			return null;
@@ -125,15 +145,49 @@ export default {
 				return json({ error: "Unauthorized" }, { status: 401 });
 			}
 
+			const rawTaskName = url.searchParams.get("task");
+			const rawBatchName = url.searchParams.get("batch");
+			const taskName = asTaskName(rawTaskName ?? "");
+			const batchName = asBatchName(rawBatchName ?? "");
+
+			if (taskName && batchName) {
+				return badRequest("Provide only one of task or batch");
+			}
+
+			if (rawTaskName && !taskName) {
+				return badRequest(`Unknown task: ${rawTaskName}`);
+			}
+
+			if (rawBatchName && !batchName) {
+				return badRequest(`Unknown batch: ${rawBatchName}`);
+			}
+
+			if (!taskName && !batchName) {
+				return json({
+					ok: true,
+					mode: "run-plan",
+					batches: getManualBatchManifest(),
+				});
+			}
+
 			const ctx = createPipelineContext(env);
-			const taskName = asTaskName(url.searchParams.get("task") ?? "");
+
 			if (taskName) {
 				await runTaskByName(ctx, taskName);
 				return json({ ok: true, mode: "run-task", task: taskName });
 			}
 
-			await runOnce(ctx);
-			return json({ ok: true, mode: "run-once" });
+			if (batchName) {
+				await runManualBatch(ctx, batchName);
+				return json({
+					ok: true,
+					mode: "run-batch",
+					batch: batchName,
+					tasks: getManualBatchTaskNames(batchName),
+				});
+			}
+
+			return badRequest("Provide task or batch");
 		}
 
 		if (url.pathname === "/scrape/anime" && request.method === "POST") {

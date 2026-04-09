@@ -39,7 +39,9 @@ Trigger manual del Worker:
 
 - Configura `SCRAPER_MANUAL_RUN_TOKEN`
 - Llama endpoints `POST` con `Authorization: Bearer <token>` o `x-run-once-token`
-- Para tareas puntuales del scheduler sigue existiendo `POST /run-once`
+- `POST /run-once?task=<task>` ejecuta una tarea puntual
+- `POST /run-once?batch=<batch>` ejecuta un batch manual seguro para Cloudflare
+- `POST /run-once` sin params devuelve el manifiesto de batches disponibles
 - En Cloudflare Workers, para pruebas manuales puedes usar:
 
 ```bash
@@ -58,7 +60,12 @@ Tareas disponibles:
 - `sync-anime-images`
 - `sync-episode-sources`
 
-Nota: ejecutar `/run-once` sin `task` intenta correr todo el scheduler en una sola invocacion; en Cloudflare puede pegar el limite de subrequests.
+Batches disponibles:
+
+- `feed-latest`
+- `feed-secondary`
+- `directory-refresh`
+- `detail-refresh`
 
 ### Cómo se evita el límite de Workers
 
@@ -296,6 +303,13 @@ Smoke test manual:
 
 ```bash
 curl -X POST 'http://127.0.0.1:8787/run-once?task=sync-latest-animes' \
+  -H 'Authorization: Bearer <token>'
+```
+
+Manifiesto local de batches:
+
+```bash
+curl -X POST 'http://127.0.0.1:8787/run-once' \
   -H 'Authorization: Bearer <token>'
 ```
 

@@ -60,21 +60,20 @@ export class SupabaseWriter {
 		page = 1,
 	) {
 		const feedFetchedAt = new Date().toISOString();
-		const payload = animeIds.map((animeId, position) => ({
-			feed_type: feedType,
-			anime_id: animeId,
-			page,
-			position,
-			feed_fetched_at: feedFetchedAt,
-		}));
+		const dedupedAnimeIds = Array.from(
+			new Set(animeIds.map((animeId) => animeId.trim()).filter(Boolean)),
+		);
 
-		if (payload.length === 0) return;
+		if (dedupedAnimeIds.length === 0) return;
 
 		await this.execute(
-			this.supabase
-				.from("anime_feed_items")
-				.upsert(payload, { onConflict: "feed_type,page,position" }),
-			"upsert anime_feed_items",
+			this.supabase.rpc("replace_anime_feed_page", {
+				p_feed_type: feedType,
+				p_page: page,
+				p_anime_ids: dedupedAnimeIds,
+				p_feed_fetched_at: feedFetchedAt,
+			}),
+			"replace anime_feed_items",
 		);
 	}
 
@@ -123,20 +122,19 @@ export class SupabaseWriter {
 		episodeIds: string[],
 	) {
 		const feedFetchedAt = new Date().toISOString();
-		const payload = episodeIds.map((episodeId, position) => ({
-			feed_type: feedType,
-			episode_id: episodeId,
-			position,
-			feed_fetched_at: feedFetchedAt,
-		}));
+		const dedupedEpisodeIds = Array.from(
+			new Set(episodeIds.map((episodeId) => episodeId.trim()).filter(Boolean)),
+		);
 
-		if (payload.length === 0) return;
+		if (dedupedEpisodeIds.length === 0) return;
 
 		await this.execute(
-			this.supabase
-				.from("episode_feed_items")
-				.upsert(payload, { onConflict: "feed_type,position" }),
-			"upsert episode_feed_items",
+			this.supabase.rpc("replace_episode_feed", {
+				p_feed_type: feedType,
+				p_episode_ids: dedupedEpisodeIds,
+				p_feed_fetched_at: feedFetchedAt,
+			}),
+			"replace episode_feed_items",
 		);
 	}
 

@@ -15,6 +15,7 @@ import {
 	createJikanSearchQueries,
 	matchJikanAnime,
 } from "../utils/jikanMatcher";
+import { toAbsoluteUrl } from "../utils/url";
 import type { PipelineContext } from "./context";
 import { loadAnimePage } from "./pageAccess";
 
@@ -281,6 +282,13 @@ export const syncAnimeDetails = async (
 						),
 						jikanState: null,
 					};
+				}
+
+				if (detail.images?.coverImage) {
+					detail.images.coverImage = toAbsoluteUrl(
+						detail.images.coverImage,
+						ctx.config.animeFlvBaseUrl,
+					);
 				}
 
 				if (detail.images?.coverImage && ctx.r2Writer?.isEnabled()) {
