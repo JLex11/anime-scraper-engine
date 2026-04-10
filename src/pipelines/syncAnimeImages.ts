@@ -61,14 +61,14 @@ const buildQueries = (meta: AnimeCarouselMeta) => {
 const mapExistingBanners = (meta: AnimeCarouselMeta): PersistedBanner[] => {
 	const carouselImages = meta.images?.carouselImages ?? [];
 	const carouselKeys = meta.carouselImageKeys ?? [];
-	const count = Math.min(carouselImages.length, carouselKeys.length);
+	const count = carouselKeys.length;
 	const existing: PersistedBanner[] = [];
 
 	for (let index = 0; index < count; index += 1) {
 		const image = carouselImages[index];
 		const key = carouselKeys[index]?.trim() ?? "";
-		const link = image?.link?.trim() ?? "";
-		if (!key || !link) continue;
+		const link = image?.link?.trim() ?? null;
+		if (!key) continue;
 
 		existing.push({
 			key,

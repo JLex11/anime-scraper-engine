@@ -223,4 +223,44 @@ describe("syncAnimeImages", () => {
 			status: "success",
 		});
 	});
+
+	test("considera validos banners existentes con key aunque link sea null", async () => {
+		const writerSpy = createWriterSpy();
+		writerSpy.animeCarouselMetaById.set("gintama", {
+			animeId: "gintama",
+			title: "Gintama",
+			otherTitles: [],
+			images: {
+				coverImage: "https://origin.example/gintama-cover.jpg",
+				carouselImages: [
+					{
+						link: null,
+						position: "1",
+						width: 1280,
+						height: 720,
+					},
+				],
+			},
+			carouselImageKeys: ["animes/gintama/carousel/banner-1.jpg"],
+		});
+
+		const ctx = createPipelineContext({
+			writer: writerSpy.writer,
+			googleSearchClient: {
+				searchImageBanners: async () => {
+					throw new Error("should not search when private banners already exist");
+				},
+			} as unknown as PipelineContext["googleSearchClient"],
+		});
+
+		await syncAnimeImages(ctx, ["gintama"], now);
+
+		expect(writerSpy.updatedCarousels).toHaveLength(0);
+		expect(writerSpy.fullSyncStates.at(-1)).toMatchObject({
+			resourceType: "anime_carousel_images",
+			resourceId: "gintama",
+			status: "success",
+			errorCount: 0,
+		});
+	});
 });

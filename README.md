@@ -185,6 +185,9 @@ El mirror de imagenes a R2 es opcional.
 - Si configuras `R2_PUBLIC_BASE_URL` y el binding `R2`, el pipeline de detalles intentara espejar `coverImage` hacia R2 antes de persistir en `animes.images`.
 - Si no configuras `R2_PUBLIC_BASE_URL`, el scraper sigue funcionando y guarda la URL original de la imagen.
 - En Cloudflare Workers no necesitas `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` ni `R2_SECRET_ACCESS_KEY` si usas el binding nativo del bucket.
+- Las columnas `cover_image_key` y `carousel_image_keys` son la fuente canonica interna que este engine mantiene hoy para que la API publica construya `/api/image/:token`.
+- La columna `image_key` existe en schema para compatibilidad y migraciones, pero este engine todavia no hace mirror ni persistencia canonica de imagenes de episodios.
+- Los campos `images.coverImage`, `images.carouselImages[].link` e `image` pueden seguir guardando URL de origen o `null` por compatibilidad, pero la API no debe depender de ellos como fuente primaria.
 
 ### Banners de carrusel (Google CSE + R2)
 

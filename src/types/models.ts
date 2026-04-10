@@ -55,6 +55,7 @@ export interface AnimeCarouselMeta {
 	title: string;
 	otherTitles?: string[] | null;
 	images?: AnimeDetail["images"] | null;
+	coverImageKey?: string | null;
 	carouselImageKeys?: string[];
 }
 

@@ -389,7 +389,9 @@ export class SupabaseWriter {
 		const { data } = await this.execute(
 			this.supabase
 				.from("animes")
-				.select("animeId,title,otherTitles,images,carousel_image_keys")
+				.select(
+					"animeId,title,otherTitles,images,cover_image_key,carousel_image_keys",
+				)
 				.in("animeId", uniqueAnimeIds),
 			"select anime carousel meta",
 		);
@@ -398,6 +400,7 @@ export class SupabaseWriter {
 			title: string;
 			otherTitles: string[] | null;
 			images: AnimeDetail["images"] | null;
+			cover_image_key: string | null;
 			carousel_image_keys: unknown;
 		}>;
 
@@ -416,6 +419,7 @@ export class SupabaseWriter {
 						title: item.title,
 						otherTitles: item.otherTitles ?? [],
 						images: item.images ?? null,
+						coverImageKey: item.cover_image_key ?? null,
 						carouselImageKeys,
 					} satisfies AnimeCarouselMeta,
 				];

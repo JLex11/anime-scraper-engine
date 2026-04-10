@@ -598,6 +598,59 @@ describe('SupabaseWriter', () => {
 		})
 	})
 
+	test('getAnimeCarouselMetas incluye cover_image_key y carousel_image_keys para merges defensivos', async () => {
+		const { supabase, selectCalls } = createSupabaseMock(undefined, {
+			animes: [
+				{
+					animeId: 'gintama',
+					title: 'Gintama',
+					otherTitles: ['銀魂'],
+					images: {
+						coverImage: 'https://origin.example/gintama-cover.jpg',
+						carouselImages: [
+							{
+								link: null,
+								position: '1',
+								width: 1280,
+								height: 720,
+							},
+						],
+					},
+					cover_image_key: 'animes/gintama/cover.jpg',
+					carousel_image_keys: ['animes/gintama/carousel/banner-1.jpg'],
+				},
+			],
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		const result = await writer.getAnimeCarouselMetas(['gintama'])
+
+		expect(result.get('gintama')).toEqual({
+			animeId: 'gintama',
+			title: 'Gintama',
+			otherTitles: ['銀魂'],
+			images: {
+				coverImage: 'https://origin.example/gintama-cover.jpg',
+				carouselImages: [
+					{
+						link: null,
+						position: '1',
+						width: 1280,
+						height: 720,
+					},
+				],
+			},
+			coverImageKey: 'animes/gintama/cover.jpg',
+			carouselImageKeys: ['animes/gintama/carousel/banner-1.jpg'],
+		})
+		expect(selectCalls).toContainEqual({
+			table: 'animes',
+			columns: 'animeId,title,otherTitles,images,cover_image_key,carousel_image_keys',
+			filters: [{ type: 'in', column: 'animeId', value: ['gintama'] }],
+			orders: [],
+		})
+	})
+
 	test('upsertEpisodes persiste episodios con conflicto por episodeId', async () => {
 		const { supabase, upsertCalls } = createSupabaseMock()
 		const writer = new SupabaseWriter(supabase)

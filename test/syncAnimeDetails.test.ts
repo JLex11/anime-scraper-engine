@@ -505,6 +505,8 @@ describe('syncAnimeDetails', () => {
 				status: null,
 				type: 'TV',
 				genres: null,
+				coverImageKey: null,
+				carouselImageKeys: [],
 				images: {
 					coverImage: 'https://cdn.example/aot.webp',
 					carouselImages: [],
@@ -567,6 +569,97 @@ describe('syncAnimeDetails', () => {
 				images: {
 					coverImage: 'https://example.test/uploads/animes/covers/aot.jpg',
 					carouselImages: [],
+				},
+			}),
+		])
+		expect(loggerSpy.warns).toEqual(
+			expect.arrayContaining([
+				{
+					message: 'syncAnimeDetails: cover mirror failed',
+					meta: {
+						animeId: 'attack-on-titan',
+						error: 'Error: r2 down',
+					},
+				},
+			]),
+		)
+	})
+
+	test('preserva keys y carousel existentes cuando el detalle no los refresca', async () => {
+		const writerSpy = createWriterSpy()
+		const loggerSpy = createLoggerSpy()
+		writerSpy.animeCarouselMetaById.set('attack-on-titan', {
+			animeId: 'attack-on-titan',
+			title: 'Attack on Titan',
+			otherTitles: [],
+			coverImageKey: 'animes/attack-on-titan/cover.webp',
+			carouselImageKeys: [
+				'animes/attack-on-titan/carousel/banner-1.webp',
+				'animes/attack-on-titan/carousel/banner-2.webp',
+			],
+			images: {
+				coverImage: 'https://r2.private.example/animes/attack-on-titan/cover.webp',
+				carouselImages: [
+					{
+						link: null,
+						position: '1',
+						width: 1280,
+						height: 720,
+					},
+					{
+						link: null,
+						position: '2',
+						width: 1280,
+						height: 720,
+					},
+				],
+			},
+		})
+
+		const ctx = createPipelineContext({
+			writer: writerSpy.writer,
+			logger: loggerSpy.logger,
+			fetchHtml: async () => `
+				<div class="Ficha">
+					<h1> Attack on Titan </h1>
+					<span class="Type tv">Anime</span>
+				</div>
+				<div class="AnimeCover"><img src="/uploads/animes/covers/aot.jpg" /></div>
+			`,
+			r2Writer: {
+				isEnabled: () => true,
+				mirrorFromUrl: async () => {
+					throw new Error('r2 down')
+				},
+			} as unknown as NonNullable<ReturnType<typeof createPipelineContext>['r2Writer']>,
+		})
+
+		await syncAnimeDetails(ctx, ['attack-on-titan'])
+
+		expect(writerSpy.animeDetails).toEqual([
+			expect.objectContaining({
+				animeId: 'attack-on-titan',
+				coverImageKey: 'animes/attack-on-titan/cover.webp',
+				carouselImageKeys: [
+					'animes/attack-on-titan/carousel/banner-1.webp',
+					'animes/attack-on-titan/carousel/banner-2.webp',
+				],
+				images: {
+					coverImage: 'https://example.test/uploads/animes/covers/aot.jpg',
+					carouselImages: [
+						{
+							link: null,
+							position: '1',
+							width: 1280,
+							height: 720,
+						},
+						{
+							link: null,
+							position: '2',
+							width: 1280,
+							height: 720,
+						},
+					],
 				},
 			}),
 		])

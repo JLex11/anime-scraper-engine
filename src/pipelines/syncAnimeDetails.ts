@@ -1,6 +1,7 @@
 import type { JikanAnimeFull, JikanAnimeVideos } from "../clients/jikanClient";
 import { extractAnimeDetail } from "../extractors/extractAnimeDetail";
 import type {
+	AnimeCarouselMeta,
 	AnimeDetail,
 	AnimeJikanDetail,
 	AnimeJikanRefreshMeta,
@@ -112,6 +113,30 @@ const getLookupTitles = (detail: AnimeDetail) =>
 				.filter(Boolean),
 		),
 	);
+
+const mergeAnimeImageState = (
+	detail: AnimeDetail,
+	existingMeta: AnimeCarouselMeta | null | undefined,
+) => {
+	const currentImages = detail.images;
+	const existingImages = existingMeta?.images ?? null;
+	const nextCoverImage =
+		currentImages?.coverImage ?? existingImages?.coverImage ?? null;
+	const nextCarouselImages =
+		currentImages?.carouselImages && currentImages.carouselImages.length > 0
+			? currentImages.carouselImages
+			: (existingImages?.carouselImages ?? []);
+
+	detail.images = {
+		coverImage: nextCoverImage,
+		carouselImages: nextCarouselImages,
+	};
+	detail.coverImageKey = detail.coverImageKey ?? existingMeta?.coverImageKey ?? null;
+	detail.carouselImageKeys =
+		detail.carouselImageKeys && detail.carouselImageKeys.length > 0
+			? detail.carouselImageKeys
+			: (existingMeta?.carouselImageKeys ?? []);
+};
 
 const fetchJikanPayload = async (
 	ctx: PipelineContext,
@@ -252,6 +277,7 @@ export const syncAnimeDetails = async (
 	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean);
 	if (uniqueIds.length === 0) return;
 
+	const existingMetaByAnimeId = await ctx.writer.getAnimeCarouselMetas(uniqueIds);
 	const refreshMetaByAnimeId = await ctx.writer.getAnimeJikanRefreshMetas(uniqueIds);
 	const limitJikan = createConcurrencyLimiter(JIKAN_CONCURRENCY);
 
@@ -309,6 +335,7 @@ export const syncAnimeDetails = async (
 					}
 				}
 
+				mergeAnimeImageState(detail, existingMetaByAnimeId.get(animeId) ?? null);
 				await ctx.writer.upsertAnimeDetails(detail);
 
 				return {
