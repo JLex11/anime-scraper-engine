@@ -16,6 +16,20 @@ import type {
 export class SupabaseWriter {
 	constructor(private readonly supabase: SupabaseClient) {}
 
+	private isMissingRpcFunctionError(
+		error: unknown,
+		functionName: string,
+	): boolean {
+		if (!error || typeof error !== "object") return false;
+
+		const normalized = error as Record<string, unknown>;
+		return (
+			normalized.code === "PGRST202" &&
+			typeof normalized.message === "string" &&
+			normalized.message.includes(functionName)
+		);
+	}
+
 	private formatError(error: unknown) {
 		if (error instanceof Error) return error.message;
 		if (typeof error === "string") return error;
@@ -66,14 +80,59 @@ export class SupabaseWriter {
 
 		if (dedupedAnimeIds.length === 0) return;
 
+		const rpcResult = await this.supabase.rpc("replace_anime_feed_page", {
+			p_feed_type: feedType,
+			p_page: page,
+			p_anime_ids: dedupedAnimeIds,
+			p_feed_fetched_at: feedFetchedAt,
+		});
+
+		if (!rpcResult.error) return;
+
+		if (
+			this.isMissingRpcFunctionError(rpcResult.error, "replace_anime_feed_page")
+		) {
+			await this.replaceAnimeFeedPageWithoutRpc(
+				feedType,
+				page,
+				dedupedAnimeIds,
+				feedFetchedAt,
+			);
+			return;
+		}
+
+		throw new Error(
+			`replace anime_feed_items: ${this.formatError(rpcResult.error)}`,
+		);
+	}
+
+	private async replaceAnimeFeedPageWithoutRpc(
+		feedType: AnimeFeedType,
+		page: number,
+		animeIds: string[],
+		feedFetchedAt: string,
+	) {
 		await this.execute(
-			this.supabase.rpc("replace_anime_feed_page", {
-				p_feed_type: feedType,
-				p_page: page,
-				p_anime_ids: dedupedAnimeIds,
-				p_feed_fetched_at: feedFetchedAt,
-			}),
-			"replace anime_feed_items",
+			this.supabase
+				.from("anime_feed_items")
+				.delete()
+				.eq("feed_type", feedType)
+				.eq("page", page),
+			"delete anime_feed_items fallback",
+		);
+
+		await this.execute(
+			this.supabase.from("anime_feed_items").insert(
+				animeIds.map((animeId, index) => ({
+					feed_type: feedType,
+					anime_id: animeId,
+					page,
+					position: index,
+					feed_fetched_at: feedFetchedAt,
+				})),
+				{},
+			),
+			"insert anime_feed_items fallback",
 		);
 	}
 
@@ -128,13 +187,49 @@ export class SupabaseWriter {
 
 		if (dedupedEpisodeIds.length === 0) return;
 
+		const rpcResult = await this.supabase.rpc("replace_episode_feed", {
+			p_feed_type: feedType,
+			p_episode_ids: dedupedEpisodeIds,
+			p_feed_fetched_at: feedFetchedAt,
+		});
+
+		if (!rpcResult.error) return;
+
+		if (this.isMissingRpcFunctionError(rpcResult.error, "replace_episode_feed")) {
+			await this.replaceEpisodeFeedWithoutRpc(
+				feedType,
+				dedupedEpisodeIds,
+				feedFetchedAt,
+			);
+			return;
+		}
+
+		throw new Error(
+			`replace episode_feed_items: ${this.formatError(rpcResult.error)}`,
+		);
+	}
+
+	private async replaceEpisodeFeedWithoutRpc(
+		feedType: EpisodeFeedType,
+		episodeIds: string[],
+		feedFetchedAt: string,
+	) {
 		await this.execute(
-			this.supabase.rpc("replace_episode_feed", {
-				p_feed_type: feedType,
-				p_episode_ids: dedupedEpisodeIds,
-				p_feed_fetched_at: feedFetchedAt,
-			}),
-			"replace episode_feed_items",
+			this.supabase.from("episode_feed_items").delete().eq("feed_type", feedType),
+			"delete episode_feed_items fallback",
+		);
+
+		await this.execute(
+			this.supabase.from("episode_feed_items").insert(
+				episodeIds.map((episodeId, index) => ({
+					feed_type: feedType,
+					episode_id: episodeId,
+					position: index,
+					feed_fetched_at: feedFetchedAt,
+				})),
+				{},
+			),
+			"insert episode_feed_items fallback",
 		);
 	}
 

@@ -40,6 +40,20 @@ const getManualBatchManifestMock = mock(() => manualBatchManifest);
 const syncEpisodeSourcesMock = mock(async () => {});
 const ensureAnimeRecordsMock = mock(async () => {});
 const upsertEpisodesMock = mock(async () => {});
+const getTaskNamesForCronMock = mock((cron: string) => {
+	switch (cron) {
+		case "*/10 * * * *":
+			return ["sync-latest-animes", "sync-latest-episodes"];
+		case "*/20 * * * *":
+			return ["sync-broadcast", "sync-episode-sources"];
+		case "5 0,12 * * *":
+			return ["sync-top-rated", "sync-directory"];
+		case "20 */4 * * *":
+			return ["sync-details-and-episodes", "sync-anime-images"];
+		default:
+			return [];
+	}
+});
 
 mock.module("../src/scheduler", () => ({
 	runCron: async () => {},
@@ -48,6 +62,7 @@ mock.module("../src/scheduler", () => ({
 	runManualBatch: runManualBatchMock,
 	getManualBatchTaskNames: getManualBatchTaskNamesMock,
 	getManualBatchManifest: getManualBatchManifestMock,
+	getTaskNamesForCron: getTaskNamesForCronMock,
 }));
 
 mock.module("../src/pipelines/syncEpisodeSources", () => ({
@@ -90,6 +105,7 @@ describe("worker", () => {
 		runManualBatchMock.mockClear();
 		getManualBatchTaskNamesMock.mockClear();
 		getManualBatchManifestMock.mockClear();
+		getTaskNamesForCronMock.mockClear();
 		syncEpisodeSourcesMock.mockClear();
 		ensureAnimeRecordsMock.mockClear();
 		upsertEpisodesMock.mockClear();

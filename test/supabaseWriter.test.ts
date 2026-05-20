@@ -9,6 +9,11 @@ type UpsertCall = {
 	method?: 'insert'
 }
 
+type DeleteCall = {
+	table: string
+	filters: Array<{ column: string; value: unknown }>
+}
+
 type RpcCall = {
 	fn: string
 	args: Record<string, unknown>
@@ -23,10 +28,11 @@ type SelectCall = {
 }
 
 const createSupabaseMock = (
-	errorByTable?: Partial<Record<string, string>>,
+	errorByTable?: Partial<Record<string, unknown>>,
 	selectDataByTable?: Partial<Record<string, unknown[]>>
 ) => {
 	const upsertCalls: UpsertCall[] = []
+	const deleteCalls: DeleteCall[] = []
 	const rpcCalls: RpcCall[] = []
 	const selectCalls: SelectCall[] = []
 
@@ -51,6 +57,25 @@ const createSupabaseMock = (
 				insert: async (payload: unknown, options: unknown) => {
 					upsertCalls.push({ table, payload, options, method: 'insert' })
 					return { data: null, error: errorByTable?.[table] ?? null }
+				},
+				delete() {
+					const filters: Array<{ column: string; value: unknown }> = []
+					const finalize = () => {
+						deleteCalls.push({ table, filters: [...filters] })
+						return Promise.resolve({ data: null, error: errorByTable?.[table] ?? null })
+					}
+
+					const builder = {
+						eq(column: string, value: unknown) {
+							filters.push({ column, value })
+							return this
+						},
+						then(resolve: (value: { data: null; error: unknown }) => unknown) {
+							return Promise.resolve(finalize()).then(resolve)
+						},
+					}
+
+					return builder
 				},
 				select(columns: string) {
 					query.columns = columns
@@ -85,6 +110,7 @@ const createSupabaseMock = (
 	return {
 		supabase: supabase as unknown as SupabaseClient,
 		upsertCalls,
+		deleteCalls,
 		rpcCalls,
 		selectCalls,
 	}
@@ -456,6 +482,116 @@ describe('SupabaseWriter', () => {
 					p_episode_ids: ['bleach-1', 'bleach-2'],
 					p_feed_fetched_at: expect.any(String),
 				},
+			},
+		])
+	})
+
+	test('upsertAnimeFeedItems hace fallback a tablas si la rpc no existe en schema cache', async () => {
+		const missingRpcError =
+			'Could not find the function public.replace_anime_feed_page(p_anime_ids, p_feed_fetched_at, p_feed_type, p_page) in the schema cache'
+		const { supabase, rpcCalls, upsertCalls, deleteCalls } = createSupabaseMock({
+			replace_anime_feed_page: {
+				code: 'PGRST202',
+				message: missingRpcError,
+			},
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.upsertAnimeFeedItems('latest', ['naruto', 'bleach', 'naruto'], 2)
+
+		expect(rpcCalls).toEqual([
+			{
+				fn: 'replace_anime_feed_page',
+				args: {
+					p_feed_type: 'latest',
+					p_page: 2,
+					p_anime_ids: ['naruto', 'bleach'],
+					p_feed_fetched_at: expect.any(String),
+				},
+			},
+		])
+		expect(deleteCalls).toEqual([
+			{
+				table: 'anime_feed_items',
+				filters: [
+					{ column: 'feed_type', value: 'latest' },
+					{ column: 'page', value: 2 },
+				],
+			},
+		])
+		expect(upsertCalls).toEqual([
+			{
+				table: 'anime_feed_items',
+				method: 'insert',
+				payload: [
+					{
+						feed_type: 'latest',
+						anime_id: 'naruto',
+						page: 2,
+						position: 0,
+						feed_fetched_at: expect.any(String),
+					},
+					{
+						feed_type: 'latest',
+						anime_id: 'bleach',
+						page: 2,
+						position: 1,
+						feed_fetched_at: expect.any(String),
+					},
+				],
+				options: {},
+			},
+		])
+	})
+
+	test('upsertEpisodeFeedItems hace fallback a tablas si la rpc no existe en schema cache', async () => {
+		const missingRpcError =
+			'Could not find the function public.replace_episode_feed(p_episode_ids, p_feed_fetched_at, p_feed_type) in the schema cache'
+		const { supabase, rpcCalls, upsertCalls, deleteCalls } = createSupabaseMock({
+			replace_episode_feed: {
+				code: 'PGRST202',
+				message: missingRpcError,
+			},
+		})
+		const writer = new SupabaseWriter(supabase)
+
+		await writer.upsertEpisodeFeedItems('latest', ['naruto-1', 'bleach-2', 'naruto-1'])
+
+		expect(rpcCalls).toEqual([
+			{
+				fn: 'replace_episode_feed',
+				args: {
+					p_feed_type: 'latest',
+					p_episode_ids: ['naruto-1', 'bleach-2'],
+					p_feed_fetched_at: expect.any(String),
+				},
+			},
+		])
+		expect(deleteCalls).toEqual([
+			{
+				table: 'episode_feed_items',
+				filters: [{ column: 'feed_type', value: 'latest' }],
+			},
+		])
+		expect(upsertCalls).toEqual([
+			{
+				table: 'episode_feed_items',
+				method: 'insert',
+				payload: [
+					{
+						feed_type: 'latest',
+						episode_id: 'naruto-1',
+						position: 0,
+						feed_fetched_at: expect.any(String),
+					},
+					{
+						feed_type: 'latest',
+						episode_id: 'bleach-2',
+						position: 1,
+						feed_fetched_at: expect.any(String),
+					},
+				],
+				options: {},
 			},
 		])
 	})

@@ -23,10 +23,10 @@ const DAILY_DETAIL_LIMIT = 10;
 const DAILY_IMAGE_LIMIT = 3;
 const EPISODE_SOURCE_REFRESH_LIMIT = 12;
 
-export const CRON_EVERY_15 = "*/15 * * * *";
-export const CRON_EVERY_30 = "*/30 * * * *";
-export const CRON_DAILY_DIRECTORY = "5 0 * * *";
-export const CRON_DAILY_DETAILS = "20 */6 * * *";
+export const CRON_LATEST_FEEDS = "*/10 * * * *";
+export const CRON_EPISODE_SOURCES_AND_BROADCAST = "*/20 * * * *";
+export const CRON_CATALOG_REFRESH = "5 0,12 * * *";
+export const CRON_DETAIL_REFRESH = "20 */4 * * *";
 export {
 	formatSchedulerAggregateErrorMessage,
 	getManualBatchManifest,
@@ -163,13 +163,13 @@ export const runTaskByName = async (
 
 export const getTaskNamesForCron = (cronExpression: string): TaskName[] => {
 	switch (cronExpression) {
-		case CRON_EVERY_15:
+		case CRON_LATEST_FEEDS:
 			return ["sync-latest-animes", "sync-latest-episodes"];
-		case CRON_EVERY_30:
-			return ["sync-broadcast", "sync-top-rated", "sync-episode-sources"];
-		case CRON_DAILY_DIRECTORY:
-			return ["sync-directory"];
-		case CRON_DAILY_DETAILS:
+		case CRON_EPISODE_SOURCES_AND_BROADCAST:
+			return ["sync-episode-sources", "sync-broadcast"];
+		case CRON_CATALOG_REFRESH:
+			return ["sync-top-rated", "sync-directory"];
+		case CRON_DETAIL_REFRESH:
 			return ["sync-details-and-episodes", "sync-anime-images"];
 		default:
 			return [];

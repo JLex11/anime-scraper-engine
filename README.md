@@ -281,10 +281,10 @@ Cada push a `master` o `main`:
 ### 5. Cron configurados
 
 ```bash
-*/15 * * * *     -> sync-latest-animes, sync-latest-episodes
-*/30 * * * *     -> sync-broadcast, sync-top-rated, sync-episode-sources
-5 0 * * *        -> sync-directory
-20 */6 * * *     -> sync-details-and-episodes, sync-anime-images
+*/10 * * * *     -> sync-latest-animes, sync-latest-episodes
+*/20 * * * *     -> sync-broadcast, sync-episode-sources
+5 0,12 * * *     -> sync-top-rated, sync-directory
+20 */4 * * *     -> sync-details-and-episodes, sync-anime-images
 ```
 
 Los cron del Worker corren en UTC.
