@@ -3,6 +3,7 @@ import {
 	formatSchedulerAggregateErrorMessage,
 	getManualBatchManifest,
 } from "../src/scheduler/shared";
+import { getTaskNamesForCron } from "../src/scheduler/index";
 
 describe("scheduler", () => {
 	test("expone manifiesto estable de batches manuales", () => {
@@ -41,5 +42,25 @@ describe("scheduler", () => {
 		).toBe(
 			"Scheduler tasks failed (2): sync-broadcast: duplicate key; sync-top-rated: top rated failed",
 		);
+	});
+
+	test("mapea cada cron a la task esperada", () => {
+		expect(getTaskNamesForCron("*/10 * * * *")).toEqual([
+			"sync-latest-animes",
+			"sync-latest-episodes",
+		]);
+		expect(getTaskNamesForCron("*/20 * * * *")).toEqual([
+			"sync-broadcast",
+			"sync-episode-sources",
+		]);
+		expect(getTaskNamesForCron("5 0,12 * * *")).toEqual([
+			"sync-top-rated",
+			"sync-directory",
+		]);
+		expect(getTaskNamesForCron("20 */4 * * *")).toEqual([
+			"sync-details-and-episodes",
+			"sync-anime-images",
+		]);
+		expect(getTaskNamesForCron("0 1 * * 1")).toEqual([]);
 	});
 });

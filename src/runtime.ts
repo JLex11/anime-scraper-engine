@@ -3,10 +3,6 @@ import { GoogleCustomSearchClient } from "./clients/googleCustomSearchClient";
 import { JikanClient } from "./clients/jikanClient";
 import { createSupabaseClient } from "./clients/supabaseClient";
 import { createConfig, type RuntimeEnv } from "./config";
-import {
-	KvPersistentCacheStore,
-	type KvNamespaceLike,
-} from "./http/persistentCache";
 import { RequestCoordinator } from "./http/requestCoordinator";
 import {
 	AnimeFlvPageLoader,
@@ -28,17 +24,6 @@ const asR2Binding = (value: unknown) => {
 	return typeof obj.put === "function" ? (obj as R2BucketLike) : null;
 };
 
-const asKvBinding = (value: unknown) => {
-	const obj = asObject(value);
-	if (!obj) return null;
-
-	return typeof obj.get === "function" &&
-		typeof obj.put === "function" &&
-		typeof obj.delete === "function"
-		? (obj as KvNamespaceLike)
-		: null;
-};
-
 export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const config = createConfig(env);
 	const logger = new Logger(
@@ -47,11 +32,8 @@ export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const supabase = createSupabaseClient(config);
 	const writer = new SupabaseWriter(supabase);
 	const r2Binding = asR2Binding(env[config.r2BucketBinding]);
-	const cacheBinding = asKvBinding(env[config.scraperCacheBinding]);
 	const r2Writer = new R2Writer(config, r2Binding);
-	const persistentCache = cacheBinding
-		? new KvPersistentCacheStore(cacheBinding)
-		: null;
+	const persistentCache = null;
 	const requestCoordinator = new RequestCoordinator({
 		logger,
 		persistentCache,

@@ -7,6 +7,7 @@
       "dependencies": {
         "@aws-sdk/client-s3": "^3.525.0",
         "@supabase/supabase-js": "2.89.0",
+        "hono": "^4.9.5",
       },
       "devDependencies": {
         "@types/bun": "^1.2.12",
@@ -371,6 +372,8 @@
     "fast-xml-parser": ["fast-xml-parser@5.5.8", "", { "dependencies": { "fast-xml-builder": "^1.1.4", "path-expression-matcher": "^1.2.0", "strnum": "^2.2.0" }, "bin": { "fxparser": "src/cli/cli.js" } }, "sha512-Z7Fh2nVQSb2d+poDViM063ix2ZGt9jmY1nWhPfHBOK2Hgnb/OW3P4Et3P/81SEej0J7QbWtJqxO05h8QYfK7LQ=="],
 
     "fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
+
+    "hono": ["hono@4.12.21", "", {}, "sha512-uV63apnb0kyPtAUwoWgaGh9HyIFcv8lgmzPZSiTBQAFOFGIzka5EZ1dZocmGnn0XdX0+XTqJ6Tqv7selMuGLRQ=="],
 
     "iceberg-js": ["iceberg-js@0.8.1", "", {}, "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA=="],
 
