@@ -15,9 +15,9 @@ export const syncLatestAnimes = async (ctx: PipelineContext) => {
 		return
 	}
 
-	const animeIds = await extractAnimeIds(html, 'ul.ListAnimes li a')
+	const animeIds = await extractAnimeIds(html)
 	const discoveredIds = animeIds.slice(0, FEED_LIMIT)
-	await ctx.writer.ensureAnimeRecords(discoveredIds.map((animeId) => buildAnimeSeed(animeId)))
+	await ctx.writer.ensureAnimeRecords(discoveredIds.map((animeId) => buildAnimeSeed(animeId, undefined, ctx.config.animeFlvBaseUrl)))
 	await ctx.writer.upsertAnimeFeedItems('latest', discoveredIds, 1)
 	await ctx.writer.markSyncState('feed', 'latest_animes', 'success')
 

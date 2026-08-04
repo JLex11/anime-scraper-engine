@@ -15,7 +15,7 @@ import {
 	type TaskName,
 } from "./scheduler";
 import type { EpisodeDetail } from "./types/models";
-import { buildAnimeSeed, humanizeAnimeId } from "./utils/animeSeed";
+import { buildAnimeSeed, humanizeAnimeId, isAnimeAv1BaseUrl, sourceOriginForBaseUrl } from "./utils/animeSeed";
 
 type JsonObject = Record<string, unknown>;
 
@@ -91,17 +91,19 @@ const parseAnimeIdFromEpisode = (episodeId: string) => {
 	return match?.[1]?.trim() ?? "";
 };
 
-const buildEpisodeSeed = (episodeId: string): EpisodeDetail | null => {
+const buildEpisodeSeed = (episodeId: string, sourceBaseUrl?: string): EpisodeDetail | null => {
 	const animeId = parseAnimeIdFromEpisode(episodeId);
 	const episode = parseEpisodeNumber(episodeId);
 	if (!animeId || episode <= 0) return null;
 
+	const animeAv1 = isAnimeAv1BaseUrl(sourceBaseUrl);
+	const origin = sourceOriginForBaseUrl(sourceBaseUrl);
 	return {
 		episodeId,
 		animeId,
 		episode,
 		title: humanizeAnimeId(animeId),
-		originalLink: `https://www3.animeflv.net/ver/${episodeId}`,
+		originalLink: animeAv1 ? `${origin}/media/${animeId}/${episode}` : `${origin}/ver/${episodeId}`,
 		image: null,
 	};
 };
@@ -168,6 +170,10 @@ app.post("/run-once", async (c) => {
 });
 
 app.post("/cron", async (c) => {
+	if (!isAuthorizedManualRun(c)) {
+		return c.json({ error: "Unauthorized" }, { status: 401 });
+	}
+
 	const cronExpression = c.req.query("cron");
 	if (!cronExpression) {
 		return c.json({ error: "Missing cron query parameter" }, { status: 400 });
@@ -209,7 +215,7 @@ app.post("/scrape/anime", async (c) => {
 
 	const ctx = createPipelineContext(process.env as unknown as Record<string, unknown>);
 	await ctx.writer.ensureAnimeRecords(
-		animeIds.map((animeId) => buildAnimeSeed(animeId)),
+		animeIds.map((animeId) => buildAnimeSeed(animeId, undefined, ctx.config.animeFlvBaseUrl)),
 	);
 
 	if (includeDetails) {
@@ -249,7 +255,8 @@ app.post("/scrape/episode-sources", async (c) => {
 		return c.json({ error: "Provide episodeId or episodeIds" }, { status: 400 });
 	}
 
-	const episodeSeeds = episodeIds.map(buildEpisodeSeed);
+	const ctx = createPipelineContext(process.env as unknown as Record<string, unknown>);
+	const episodeSeeds = episodeIds.map((episodeId) => buildEpisodeSeed(episodeId, ctx.config.animeFlvBaseUrl));
 	if (episodeSeeds.some((episode) => !episode)) {
 		return c.json(
 			{ error: "Episode ids must end with a numeric suffix, for example naruto-12" },
@@ -260,10 +267,9 @@ app.post("/scrape/episode-sources", async (c) => {
 	const episodes = episodeSeeds.filter(
 		(episode): episode is EpisodeDetail => episode !== null,
 	);
-	const ctx = createPipelineContext(process.env as unknown as Record<string, unknown>);
 	await ctx.writer.ensureAnimeRecords(
 		episodes.map((episode) =>
-			buildAnimeSeed(episode.animeId, episode.title ?? episode.animeId),
+			buildAnimeSeed(episode.animeId, episode.title ?? episode.animeId, ctx.config.animeFlvBaseUrl),
 		),
 	);
 	await ctx.writer.upsertEpisodes(episodes);

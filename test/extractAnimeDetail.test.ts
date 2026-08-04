@@ -35,4 +35,15 @@ describe('extractAnimeDetail', () => {
 
 		expect(detail).toBeNull()
 	})
+
+	test('mapea los estados numericos de AnimeAV1', async () => {
+		const html = (status: number) => `
+			<h1>Anime de prueba</h1>
+			<script>const page = {data:{media:{status:${status},category:{name:"TV"}}}}</script>
+		`
+
+		expect((await extractAnimeDetail('anime-de-prueba', html(0)))?.status).toBe('Finalizado')
+		expect((await extractAnimeDetail('anime-de-prueba', html(1)))?.status).toBe('Próximamente')
+		expect((await extractAnimeDetail('anime-de-prueba', html(2)))?.status).toBe('En emisión')
+	})
 })

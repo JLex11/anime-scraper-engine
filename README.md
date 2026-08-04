@@ -19,8 +19,11 @@ Motor de scraping separado de la API publica. Ejecuta pipelines de ingesta y esc
 
 ```bash
 bun install
-bun run dev
+# Runtime local equivalente a Cloud Run
+SCRAPER_ENABLE_EMBEDDED_SCHEDULER=true bun run dev
 ```
+
+El runtime Bun/Cloud Run es la ruta vigente y ejecuta el scheduler embebido con `SCRAPER_ENABLE_EMBEDDED_SCHEDULER=true`. `bun run dev:worker` queda disponible solo para pruebas o una migración futura a Workers Cron.
 
 Ejecucion unica:
 
@@ -35,14 +38,29 @@ bun test
 bunx tsc --noEmit
 ```
 
-Trigger manual del Worker:
+## Scheduler canónico: Cloud Run
+
+En producción, el scheduler oficial es el **scheduler embebido de Cloud Run**. `cloudbuild.yaml` fija `SCRAPER_ENABLE_EMBEDDED_SCHEDULER=true` y `src/server-entry.ts` arranca `runScheduler` después de levantar la API HTTP.
+
+Despliega la ruta vigente con:
+
+```bash
+gcloud builds submit --config=cloudbuild.yaml
+```
+
+Workers Cron no está habilitado automáticamente en `wrangler.toml`; el entrypoint `src/worker.ts` se conserva para pruebas y una posible migración posterior. No despliegues ambos schedulers en producción al mismo tiempo.
+
+> Nota operativa: `cloudbuild.yaml` usa `min-instances=0`; si Cloud Run debe ejecutar jobs continuamente, verifica que exista una instancia activa o cambia conscientemente esa política antes del despliegue.
+
+### Triggers manuales
 
 - Configura `SCRAPER_MANUAL_RUN_TOKEN`
 - Llama endpoints `POST` con `Authorization: Bearer <token>` o `x-run-once-token`
 - `POST /run-once?task=<task>` ejecuta una tarea puntual
 - `POST /run-once?batch=<batch>` ejecuta un batch manual seguro para Cloudflare
 - `POST /run-once` sin params devuelve el manifiesto de batches disponibles
-- En Cloudflare Workers, para pruebas manuales puedes usar:
+- El endpoint Bun `POST /cron?cron=...` permite disparar manualmente un cron en Cloud Run y usa el mismo token Bearer
+- Para probar el Worker opcional puedes usar:
 
 ```bash
 curl -X POST 'https://<worker>/run-once?task=sync-latest-animes' \
@@ -208,13 +226,15 @@ El mirror de imagenes a R2 es opcional.
 - La migracion SQL incluida crea la tabla `anime_jikan_details` para poster MAL, synopsis, trailer, promos y metadata adicional.
 - El matching usa el titulo principal y tambien los titulos alternativos (`TxtAlt`) extraidos desde AnimeFLV.
 
-## Deploy en Cloudflare Workers (Cron)
+## Worker opcional (futura migración a Workers Cron)
 
-Este repo ya incluye:
+Este repo conserva:
 
-- `wrangler.toml` con `scheduled` crons
+- `wrangler.toml` con bindings de KV/R2 y el Worker
 - entrypoint Worker en `src/worker.ts`
-- despliegue por Git integration / Workers Builds en Cloudflare
+- script de despliegue por Git integration / Workers Builds en Cloudflare
+
+Actualmente no hay triggers `scheduled` declarados en `wrangler.toml`, porque Cloud Run es el scheduler de producción. Si se migra el scheduler a Workers, habrá que volver a declarar los cron, desplegar el Worker y desactivar el scheduler de Cloud Run.
 
 ### 1. Requisitos en Cloudflare
 
@@ -232,12 +252,13 @@ Minimas para que el scraper funcione:
 
 Vars no sensibles ya definidas en `wrangler.toml`:
 
-- `ANIMEFLV_BASE_URL`
+- `ANIMEFLV_BASE_URL` (por defecto: `https://animeav1.com`; conserva el nombre por compatibilidad)
 - `JIKAN_BASE_URL`
 - `SCRAPER_MAX_CONCURRENCY`
 - `SCRAPER_REQUEST_TIMEOUT_MS`
 - `SCRAPER_REQUEST_RETRY_ATTEMPTS`
 - `SCRAPER_LOG_LEVEL`
+- `SCRAPER_ENABLE_EMBEDDED_SCHEDULER=false` (mantenerlo así si se ejecuta el Worker opcional)
 - `R2_BUCKET`
 - `R2_BUCKET_BINDING`
 - `SCRAPER_CACHE_BINDING`
@@ -251,9 +272,7 @@ Solo si quieres poblar `carouselImages` con Google CSE:
 - `GOOGLE_CSE_API_KEY`
 - `GOOGLE_CSE_CX`
 
-Opcional para cache persistente de requests:
-
-- un namespace KV enlazado con el binding `SCRAPER_CACHE`
+El runtime conecta automáticamente el namespace KV enlazado con `SCRAPER_CACHE` para cache persistente de requests y matches Jikan.
 
 Opcional (normalmente no hace falta tocarla):
 
@@ -270,15 +289,15 @@ Configura en Cloudflare:
 
 No hace falta configurar secrets de despliegue en GitHub Actions si el deploy lo hace Cloudflare directamente.
 
-### 4. Flujo CI/CD
+### 4. Flujo CI/CD opcional
 
 Cada push a `master` o `main`:
 
 1. instala dependencias
 2. ejecuta typecheck
-3. despliega con `wrangler deploy`
+3. despliega con `wrangler deploy` solo cuando Workers Cron sea la ruta elegida
 
-### 5. Cron configurados
+### 5. Cron disponibles para una futura migración
 
 ```bash
 */10 * * * *     -> sync-latest-animes, sync-latest-episodes
@@ -287,7 +306,7 @@ Cada push a `master` o `main`:
 20 */4 * * *     -> sync-details-and-episodes, sync-anime-images
 ```
 
-Los cron del Worker corren en UTC.
+Estas expresiones son la propuesta para Workers Cron y no están activas mientras Cloud Run sea la ruta vigente.
 
 ### 6. Prueba local del Worker
 

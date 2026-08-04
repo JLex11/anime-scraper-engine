@@ -1,6 +1,8 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { AppConfig } from "../config";
 
+const MAX_MIRRORED_IMAGE_BYTES = 10 * 1024 * 1024;
+
 export type R2BucketLike = {
 	put: (
 		key: string,
@@ -22,6 +24,79 @@ const buildObjectKey = (prefix: string, filename: string) => {
 	const safeFilename = sanitizeFileName(filename);
 
 	return safePrefix ? `${safePrefix}/${safeFilename}` : safeFilename;
+};
+
+const isUnsafeImageUrl = (rawUrl: string) => {
+	try {
+		const url = new URL(rawUrl);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return true;
+
+		const hostname = url.hostname.toLowerCase();
+		if (
+			hostname === "localhost" ||
+			hostname.endsWith(".localhost") ||
+			hostname.endsWith(".local") ||
+			hostname.endsWith(".internal") ||
+			hostname === "0.0.0.0" ||
+			hostname === "::1" ||
+			hostname === "[::1]"
+		) return true;
+
+		const octets = hostname.split(".").map(Number);
+		if (octets.length === 4 && octets.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
+			const [first, second] = octets;
+			if (
+				first === 10 ||
+				first === 127 ||
+				(first === 169 && second === 254) ||
+				(first === 172 && second >= 16 && second <= 31) ||
+				(first === 192 && second === 168)
+			) return true;
+		}
+
+		return false;
+	} catch {
+		return true;
+	}
+};
+
+const readImageBody = async (response: Response): Promise<ArrayBuffer | null> => {
+	const contentLength = Number(response.headers.get("content-length") ?? "");
+	if (Number.isFinite(contentLength) && contentLength > MAX_MIRRORED_IMAGE_BYTES) {
+		return null;
+	}
+
+	if (!response.body) {
+		const buffer = await response.arrayBuffer();
+		return buffer.byteLength <= MAX_MIRRORED_IMAGE_BYTES ? buffer : null;
+	}
+
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let totalBytes = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value) continue;
+			totalBytes += value.byteLength;
+			if (totalBytes > MAX_MIRRORED_IMAGE_BYTES) {
+				await reader.cancel();
+				return null;
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	const buffer = new Uint8Array(totalBytes);
+	let offset = 0;
+	for (const chunk of chunks) {
+		buffer.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return buffer.buffer;
 };
 
 export class R2Writer {
@@ -74,6 +149,9 @@ export class R2Writer {
 		if (!this.isEnabled()) {
 			return { url: imageUrl, key: null };
 		}
+		if (isUnsafeImageUrl(imageUrl)) {
+			return { url: imageUrl, key: null };
+		}
 
 		const response = await fetch(imageUrl, {
 			signal: AbortSignal.timeout(this.appConfig.requestTimeoutMs),
@@ -82,10 +160,17 @@ export class R2Writer {
 			return { url: imageUrl, key: null };
 		}
 
-		const buffer = await response.arrayBuffer();
+		const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+		if (!contentType?.startsWith("image/")) {
+			return { url: imageUrl, key: null };
+		}
+
+		const buffer = await readImageBody(response);
+		if (!buffer) {
+			return { url: imageUrl, key: null };
+		}
 		const originalFilename = imageUrl.split("/").pop() || "image.webp";
 		const objectKey = buildObjectKey(prefix, originalFilename);
-		const contentType = response.headers.get("content-type") || "image/webp";
 
 		if (this.bucketBinding != null) {
 			await this.bucketBinding.put(objectKey, buffer, {

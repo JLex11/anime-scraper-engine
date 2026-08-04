@@ -3,6 +3,7 @@ import type { EpisodeDetail } from '../types/models'
 import { runWithConcurrency } from '../utils/concurrency'
 import type { PipelineContext } from './context'
 import { loadAnimePage } from './pageAccess'
+import { isAnimeAv1BaseUrl, sourceOriginForBaseUrl } from '../utils/animeSeed'
 
 export const syncAnimeEpisodes = async (ctx: PipelineContext, animeIds: string[]) => {
 	const uniqueIds = Array.from(new Set(animeIds)).filter(Boolean)
@@ -10,6 +11,8 @@ export const syncAnimeEpisodes = async (ctx: PipelineContext, animeIds: string[]
 
 	const maxEpisodeByAnimeId = await ctx.writer.getMaxEpisodeNumbersByAnimeIds(uniqueIds)
 	const episodeBatches: EpisodeDetail[][] = []
+	const animeAv1 = isAnimeAv1BaseUrl(ctx.config.animeFlvBaseUrl)
+	const origin = sourceOriginForBaseUrl(ctx.config.animeFlvBaseUrl)
 
 	const syncStates = (await runWithConcurrency(uniqueIds, ctx.config.maxConcurrency, async (animeId) => {
 		try {
@@ -60,7 +63,9 @@ export const syncAnimeEpisodes = async (ctx: PipelineContext, animeIds: string[]
 					animeId,
 					episode: episodeNumber,
 					title: animeId.replaceAll('-', ' '),
-					originalLink: `https://www3.animeflv.net/ver/${episodeId}`,
+					originalLink: animeAv1
+						? `${origin}/media/${animeId}/${episodeNumber}`
+						: `${origin}/ver/${episodeId}`,
 					image: null,
 				}
 			})

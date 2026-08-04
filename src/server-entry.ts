@@ -12,6 +12,7 @@ const main = async () => {
 		baseUrl: ctx.config.animeFlvBaseUrl,
 		maxConcurrency: ctx.config.maxConcurrency,
 		runOnce: ctx.config.runOnce,
+		embeddedSchedulerEnabled: ctx.config.embeddedSchedulerEnabled === true,
 		r2Enabled: ctx.r2Writer?.isEnabled() ?? false,
 	});
 
@@ -25,6 +26,13 @@ const main = async () => {
 		port: PORT,
 	});
 	ctx.logger.info(`http server listening on port ${PORT}`);
+
+	if (ctx.config.embeddedSchedulerEnabled !== true) {
+		ctx.logger.info(
+			"embedded scheduler disabled; this runtime is HTTP-only",
+		);
+		return;
+	}
 
 	await runScheduler(ctx);
 };

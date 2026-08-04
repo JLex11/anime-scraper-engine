@@ -38,7 +38,7 @@ steps:
       - "--max-instances"
       - "1"
       - "--set-env-vars"
-      - "SCRAPER_RUN_ONCE=false"
+      - "SCRAPER_RUN_ONCE=false,SCRAPER_ENABLE_EMBEDDED_SCHEDULER=true"
       - "--set-secrets"
       - "SUPABASE_URL=supabase-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,SCRAPER_MANUAL_RUN_TOKEN=manual-run-token:latest,R2_ACCOUNT_ID=r2-account-id:latest,R2_ACCESS_KEY_ID=r2-access-key-id:latest,R2_SECRET_ACCESS_KEY=r2-secret-access-key:latest,GOOGLE_CSE_API_KEY=google-cse-api-key:latest,GOOGLE_CSE_CX=google-cse-cx:latest"
       - "--allow-unauthenticated"

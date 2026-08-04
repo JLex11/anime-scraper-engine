@@ -16,7 +16,7 @@ export const syncDirectoryAnimes = async (ctx: PipelineContext, pages = 3) => {
 		}
 
 		const animeIds = await extractAnimeIds(html, 'ul.ListAnimes li a')
-		await ctx.writer.ensureAnimeRecords(animeIds.map((animeId) => buildAnimeSeed(animeId)))
+		await ctx.writer.ensureAnimeRecords(animeIds.map((animeId) => buildAnimeSeed(animeId, undefined, ctx.config.animeFlvBaseUrl)))
 		await ctx.writer.upsertAnimeFeedItems('directory', animeIds, page)
 		successPages += 1
 	}

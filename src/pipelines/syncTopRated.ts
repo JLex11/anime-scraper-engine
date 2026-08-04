@@ -17,7 +17,7 @@ export const syncTopRated = async (ctx: PipelineContext) => {
 
 	const animeIds = await extractAnimeIds(html, 'ul.ListAnimes li a')
 	const topRatedIds = animeIds.slice(0, FEED_LIMIT)
-	await ctx.writer.ensureAnimeRecords(topRatedIds.map((animeId) => buildAnimeSeed(animeId)))
+	await ctx.writer.ensureAnimeRecords(topRatedIds.map((animeId) => buildAnimeSeed(animeId, undefined, ctx.config.animeFlvBaseUrl)))
 	await ctx.writer.upsertAnimeFeedItems('rating', topRatedIds, 1)
 	await ctx.writer.markSyncState('feed', 'rating_animes', 'success')
 	await syncAnimeDetails(ctx, topRatedIds.slice(0, DETAIL_WARM_LIMIT))

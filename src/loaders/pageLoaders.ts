@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config";
 import type { PersistentCacheStore } from "../http/persistentCache";
 import type { RequestCoordinator } from "../http/requestCoordinator";
+import { isAnimeAv1BaseUrl } from "../utils/animeSeed";
 
 export interface PageLoader {
 	getPath(path: string): Promise<string | null>;
@@ -21,6 +22,15 @@ const htmlHeaders = {
 	accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 };
 
+const cacheNamespaceForBaseUrl = (baseUrl: string) => {
+	try {
+		const url = new URL(baseUrl);
+		return encodeURIComponent(url.origin.toLowerCase());
+	} catch {
+		return encodeURIComponent(baseUrl.toLowerCase());
+	}
+};
+
 const buildUrl = (baseUrl: string, path: string) =>
 	`${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
@@ -32,7 +42,9 @@ export class AnimeFlvPageLoader implements PageLoader {
 
 	getPath(path: string): Promise<string | null> {
 		return this.coordinator.requestText(buildUrl(this.config.animeFlvBaseUrl, path), undefined, {
-			cacheKey: `animeflv:path:${path}`,
+			// Include the source origin so a migration cannot reuse persisted HTML
+			// from the previous AnimeFLV host for the same path.
+			cacheKey: `animeflv:${cacheNamespaceForBaseUrl(this.config.animeFlvBaseUrl)}:path:${path}`,
 			cacheScope: "persistent",
 			ttlMs: ttlForPath(path),
 			staleWhileRevalidateMs: staleTtlForPath(path),
@@ -47,20 +59,23 @@ export class AnimeFlvPageLoader implements PageLoader {
 		return this.getPath("/");
 	}
 
+
 	getAnimePage(animeId: string) {
-		return this.getPath(`/anime/${animeId}`);
+		return this.getPath(isAnimeAv1BaseUrl(this.config.animeFlvBaseUrl) ? `/media/${animeId}` : `/anime/${animeId}`);
 	}
 
 	getEpisodePage(episodeId: string) {
-		return this.getPath(`/ver/${episodeId}`);
+		if (!isAnimeAv1BaseUrl(this.config.animeFlvBaseUrl)) return this.getPath(`/ver/${episodeId}`);
+		const match = episodeId.match(/^(.+)-(\d+)$/);
+		return this.getPath(match ? `/media/${match[1]}/${match[2]}` : `/media/${episodeId}`);
 	}
 
 	getDirectoryPage(page: number) {
-		return this.getPath(`/browse?page=${page}`);
+		return this.getPath(isAnimeAv1BaseUrl(this.config.animeFlvBaseUrl) ? `/catalogo?page=${page}` : `/browse?page=${page}`);
 	}
 
 	getTopRatedPage() {
-		return this.getPath("/browse?status=1&order=rating");
+		return this.getPath(isAnimeAv1BaseUrl(this.config.animeFlvBaseUrl) ? "/catalogo?order=score" : "/browse?status=1&order=rating");
 	}
 }
 
@@ -138,13 +153,13 @@ const matchKey = (animeId: string) => `jikan:match:${animeId}`;
 
 const ttlForPath = (path: string) => {
 	if (path === "/") return 5 * 60 * 1000;
-	if (path.startsWith("/anime/")) return 60 * 60 * 1000;
-	if (path.startsWith("/ver/")) return 10 * 60 * 1000;
+	if (path.startsWith("/ver/") || /^\/media\/[^/]+\/\d+/.test(path)) return 10 * 60 * 1000;
+	if (path.startsWith("/anime/") || path.startsWith("/media/")) return 60 * 60 * 1000;
 	return 30 * 60 * 1000;
 };
 
 const staleTtlForPath = (path: string) => {
 	if (path === "/") return 60 * 1000;
-	if (path.startsWith("/ver/")) return 5 * 60 * 1000;
+	if (path.startsWith("/ver/") || /^\/media\/[^/]+\/\d+/.test(path)) return 5 * 60 * 1000;
 	return 10 * 60 * 1000;
 };

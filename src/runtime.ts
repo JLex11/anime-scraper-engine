@@ -8,6 +8,7 @@ import {
 	AnimeFlvPageLoader,
 	JikanMatchLoader,
 } from "./loaders/pageLoaders";
+import { KvPersistentCacheStore, type KvNamespaceLike } from "./http/persistentCache";
 import type { PipelineContext } from "./pipelines/context";
 import { Logger } from "./utils/logger";
 import { type R2BucketLike, R2Writer } from "./writers/r2Writer";
@@ -24,6 +25,16 @@ const asR2Binding = (value: unknown) => {
 	return typeof obj.put === "function" ? (obj as R2BucketLike) : null;
 };
 
+const asKvBinding = (value: unknown): KvNamespaceLike | null => {
+	const obj = asObject(value);
+	if (!obj) return null;
+	return typeof obj.get === "function" &&
+		typeof obj.put === "function" &&
+		typeof obj.delete === "function"
+		? (obj as KvNamespaceLike)
+		: null;
+};
+
 export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const config = createConfig(env);
 	const logger = new Logger(
@@ -33,7 +44,8 @@ export const createPipelineContext = (env: RuntimeEnv): PipelineContext => {
 	const writer = new SupabaseWriter(supabase);
 	const r2Binding = asR2Binding(env[config.r2BucketBinding]);
 	const r2Writer = new R2Writer(config, r2Binding);
-	const persistentCache = null;
+	const kvBinding = asKvBinding(env[config.scraperCacheBinding]);
+	const persistentCache = kvBinding ? new KvPersistentCacheStore(kvBinding) : null;
 	const requestCoordinator = new RequestCoordinator({
 		logger,
 		persistentCache,

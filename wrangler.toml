@@ -1,25 +1,18 @@
 name = "anime-scraper-engine"
 main = "src/worker.ts"
-compatibility_date = "2026-04-02"
+compatibility_date = "2026-08-03"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-[triggers]
-crons = [
-  "*/10 * * * *",
-  "*/20 * * * *",
-  "5 0,12 * * *",
-  "20 */4 * * *",
-]
-
 [vars]
-ANIMEFLV_BASE_URL = "https://www3.animeflv.net"
+ANIMEFLV_BASE_URL = "https://animeav1.com"
 JIKAN_BASE_URL = "https://api.jikan.moe/v4"
 GOOGLE_CSE_BASE_URL = "https://www.googleapis.com/customsearch/v1"
 SCRAPER_MAX_CONCURRENCY = "6"
 SCRAPER_REQUEST_TIMEOUT_MS = "15000"
 SCRAPER_REQUEST_RETRY_ATTEMPTS = "1"
 SCRAPER_LOG_LEVEL = "info"
+SCRAPER_ENABLE_EMBEDDED_SCHEDULER = "false"
 R2_BUCKET = "anime-app"
 R2_BUCKET_BINDING = "R2"
 SCRAPER_CACHE_BINDING = "SCRAPER_CACHE"
